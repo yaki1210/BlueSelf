@@ -13,6 +13,7 @@ import android.content.IntentFilter
 import android.os.Build
 import android.util.Log
 import com.example.data.model.DeviceEntity
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -25,6 +26,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStream
@@ -170,6 +173,7 @@ class BluetoothManager(private val context: Context) {
         }
 
         try {
+            ensureServerListening()
             if (!isReceiverRegistered) {
                 val filter = IntentFilter().apply {
                     addAction(BluetoothDevice.ACTION_FOUND)
@@ -222,6 +226,7 @@ class BluetoothManager(private val context: Context) {
             disconnect()
             _activeDevice.value = device
             _connectionState.value = BluetoothConnectionState.CONNECTING
+            ensureServerListening()
 
             val adapter = bluetoothAdapter
             if (adapter == null || !adapter.isEnabled) {
@@ -236,19 +241,45 @@ class BluetoothManager(private val context: Context) {
                 }
 
                 val bluetoothDevice = adapter.getRemoteDevice(device.macAddress)
-                var socket: BluetoothSocket? = null
 
-                // Try SPP UUID first
-                try {
-                    socket = bluetoothDevice.createRfcommSocketToServiceRecord(sppUuid)
-                    socket.connect()
-                } catch (e: Exception) {
-                    Log.w(tag, "SPP connection failed, trying fallback custom UUID: ${e.message}")
+                // Step 1: make sure both ends are paired before a secure connection.
+                val bondError = ensureBonded(bluetoothDevice).exceptionOrNull()
+                if (bondError != null) {
+                    _connectionState.value = BluetoothConnectionState.OFFLINE
+                    _connectionErrors.emit("与 ${device.name} 配对失败：${bondError.message ?: "未知错误"}")
+                    return@launch
+                }
+
+                // Step 2: try secure connection on the app UUID first, then fall back
+                // to the standard SPP UUID and finally to an insecure socket.
+                val attempts = listOf(
+                    Triple("secure-appUuid", false, appUuid),
+                    Triple("secure-spp", false, sppUuid),
+                    Triple("insecure-appUuid", true, appUuid)
+                )
+                var socket: BluetoothSocket? = null
+                var lastError: Throwable? = null
+
+                for ((label, insecure, uuid) in attempts) {
+                    if (socket?.isConnected == true) break
                     try {
-                        socket = bluetoothDevice.createRfcommSocketToServiceRecord(appUuid)
-                        socket.connect()
-                    } catch (e2: Exception) {
-                        Log.w(tag, "Direct socket failed: ${e2.message}")
+                        if (adapter.isDiscovering) {
+                            adapter.cancelDiscovery()
+                        }
+                        val candidate = if (insecure) {
+                            bluetoothDevice.createInsecureRfcommSocketToServiceRecord(uuid)
+                        } else {
+                            bluetoothDevice.createRfcommSocketToServiceRecord(uuid)
+                        }
+                        withTimeout(15_000) { candidate.connect() }
+                        if (candidate.isConnected) {
+                            socket = candidate
+                        } else {
+                            candidate.close()
+                        }
+                    } catch (e: Exception) {
+                        lastError = e
+                        Log.w(tag, "$label connect failed: ${e.message}")
                     }
                 }
 
@@ -260,7 +291,7 @@ class BluetoothManager(private val context: Context) {
                 } else {
                     _connectionState.value = BluetoothConnectionState.OFFLINE
                     _connectionErrors.emit(
-                        "无法连接到 ${device.name}（${device.macAddress}），请确认目标设备已开启蓝牙并运行 selftrans"
+                        "无法连接到 ${device.name}（${device.macAddress}）：${lastError?.message ?: "未知错误"}。请确认对方已开启蓝牙、运行 selftrans 且已完成配对"
                     )
                 }
             } catch (e: Exception) {
@@ -268,6 +299,68 @@ class BluetoothManager(private val context: Context) {
                 _connectionState.value = BluetoothConnectionState.OFFLINE
                 _connectionErrors.emit("连接失败：${e.message ?: "未知错误"}")
             }
+        }
+    }
+
+    /**
+     * Ensures the target device is paired. If not bonded, triggers [BluetoothDevice.createBond]
+     * and waits for [BluetoothDevice.ACTION_BOND_STATE_CHANGED] to reach BOND_BONDED.
+     */
+    @SuppressLint("MissingPermission")
+    private suspend fun ensureBonded(bluetoothDevice: BluetoothDevice): Result<Unit> = withContext(Dispatchers.IO) {
+        when (bluetoothDevice.bondState) {
+            BluetoothDevice.BOND_BONDED -> Result.success(Unit)
+            BluetoothDevice.BOND_BONDING -> waitForBond(bluetoothDevice)
+            else -> {
+                val created = try {
+                    bluetoothDevice.createBond()
+                } catch (e: SecurityException) {
+                    return@withContext Result.failure<Unit>(SecurityException("缺少蓝牙连接权限，无法配对"))
+                }
+                if (!created) {
+                    Result.failure(IllegalStateException("系统拒绝了配对请求"))
+                } else {
+                    waitForBond(bluetoothDevice)
+                }
+            }
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private suspend fun waitForBond(bluetoothDevice: BluetoothDevice): Result<Unit> {
+        val outcome = withTimeoutOrNull(30_000) {
+            val deferred = CompletableDeferred<Boolean>()
+            val receiver = object : BroadcastReceiver() {
+                @SuppressLint("MissingPermission")
+                override fun onReceive(context: Context?, intent: Intent?) {
+                    val device: BluetoothDevice? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        intent?.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        intent?.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                    }
+                    if (device?.address != bluetoothDevice.address) return
+                    when (intent?.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, -1)) {
+                        BluetoothDevice.BOND_BONDED -> deferred.complete(true)
+                        BluetoothDevice.BOND_NONE -> deferred.complete(false)
+                    }
+                }
+            }
+            try {
+                context.registerReceiver(receiver, IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED))
+            } catch (_: SecurityException) {
+                return@withTimeoutOrNull null
+            }
+            try {
+                deferred.await()
+            } finally {
+                context.unregisterReceiver(receiver)
+            }
+        }
+        return when (outcome) {
+            true -> Result.success(Unit)
+            false -> Result.failure(IllegalStateException("配对失败或被对方拒绝，请重试"))
+            null -> Result.failure(IllegalStateException("配对超时，请在两台设备上确认配对请求"))
         }
     }
 
@@ -340,12 +433,27 @@ class BluetoothManager(private val context: Context) {
         }
     }
 
+    /**
+     * Restarts the inbound listener if it is not active. The listener is started lazily
+     * (not only in init) because at first launch the runtime permissions may not be
+     * granted yet and `listenUsingRfcommWithServiceRecord` would fail silently.
+     */
+    @Synchronized
+    fun ensureServerListening() {
+        val adapter = bluetoothAdapter
+        if (adapter == null || !adapter.isEnabled) return
+        if (serverJob?.isActive != true) {
+            startServerListener()
+        }
+    }
+
     @SuppressLint("MissingPermission")
     private fun startServerListener() {
+        if (serverJob?.isActive == true) return
         val adapter = bluetoothAdapter ?: return
         serverJob = scope.launch {
             try {
-                serverSocket = adapter.listenUsingRfcommWithServiceRecord("BluetoothTransfer", sppUuid)
+                serverSocket = adapter.listenUsingRfcommWithServiceRecord("BluetoothTransfer", appUuid)
                 while (isActive) {
                     val socket = serverSocket?.accept() ?: break
                     activeSocket = socket
@@ -364,6 +472,7 @@ class BluetoothManager(private val context: Context) {
                 }
             } catch (e: Exception) {
                 Log.d(tag, "Server socket closed: ${e.message}")
+                serverSocket = null
             }
         }
     }

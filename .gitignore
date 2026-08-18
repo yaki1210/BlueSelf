@@ -18,3 +18,5 @@ local.properties
 debug.keystore
 /.robolectric_home
 /.robo-init.gradle
+/.trae
+/connect_error.png

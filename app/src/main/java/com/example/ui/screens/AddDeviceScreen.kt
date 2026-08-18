@@ -240,7 +240,7 @@ fun AddDeviceScreen(
                                 color = MinimalOnSurface
                             )
                             Text(
-                                text = "点击设备即可建立连接并保存",
+                                text = "点击设备将发起配对并连接",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MinimalOnSurfaceVariant
                             )
