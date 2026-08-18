@@ -19,10 +19,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.util.UUID
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -85,77 +83,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val snackbarEvent: SharedFlow<String> = _snackbarEvent.asSharedFlow()
 
     init {
-        initializeDefaultDataIfNeeded()
         observeIncomingMessages()
-    }
-
-    private fun initializeDefaultDataIfNeeded() {
-        viewModelScope.launch {
-            val count = deviceRepository.getDeviceCount()
-            if (count == 0) {
-                val defaultDevices = listOf(
-                    DeviceEntity(
-                        id = "dev_win_01",
-                        name = "我的 Windows 电脑",
-                        macAddress = "00:1A:7D:DA:71:13",
-                        deviceType = "PC",
-                        lastKnownState = "ONLINE",
-                        isCurrent = true,
-                        isPinned = true
-                    ),
-                    DeviceEntity(
-                        id = "dev_s24_02",
-                        name = "Galaxy S24",
-                        macAddress = "44:6D:57:C2:A8:90",
-                        deviceType = "PHONE",
-                        lastKnownState = "ONLINE",
-                        isCurrent = false
-                    ),
-                    DeviceEntity(
-                        id = "dev_p8_03",
-                        name = "Pixel 8",
-                        macAddress = "3C:28:6D:E1:92:04",
-                        deviceType = "PHONE",
-                        lastKnownState = "OFFLINE",
-                        isCurrent = false
-                    ),
-                    DeviceEntity(
-                        id = "dev_mi_04",
-                        name = "小米手机",
-                        macAddress = "E4:5F:01:88:AA:BC",
-                        deviceType = "PHONE",
-                        lastKnownState = "OFFLINE",
-                        isCurrent = false
-                    )
-                )
-                deviceRepository.saveDevices(defaultDevices)
-
-                // Add sample initial received message for testing inbox
-                val initialMsg = MessageEntity(
-                    id = UUID.randomUUID().toString(),
-                    senderDeviceId = "dev_win_01",
-                    senderDeviceName = "我的 Windows 电脑",
-                    receiverDeviceId = "local_android",
-                    receiverDeviceName = "Android 本机",
-                    content = "你好，测试一下蓝牙传输",
-                    createdAt = System.currentTimeMillis() - 1000 * 60 * 15,
-                    receivedAt = System.currentTimeMillis() - 1000 * 60 * 15,
-                    readAt = null,
-                    status = "RECEIVED",
-                    isOutgoing = false
-                )
-                messageRepository.saveMessage(initialMsg)
-
-                // Connect to the default selected device
-                bluetoothManager.connectToDevice(defaultDevices[0])
-            } else {
-                // Auto connect to current selected device
-                val current = deviceRepository.getDeviceById("dev_win_01")
-                if (current != null) {
-                    bluetoothManager.connectToDevice(current)
-                }
-            }
-        }
+        observeManagerErrors()
     }
 
     private fun observeIncomingMessages() {
@@ -164,6 +93,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val entity = MessageProtocol.packetToEntity(packet, isOutgoing = false)
                 messageRepository.saveMessage(entity)
                 _snackbarEvent.emit("收到来自 ${packet.senderName} 的新消息")
+            }
+        }
+    }
+
+    private fun observeManagerErrors() {
+        viewModelScope.launch {
+            bluetoothManager.connectionErrors.collect { msg ->
+                _snackbarEvent.emit(msg)
+            }
+        }
+        viewModelScope.launch {
+            bluetoothManager.scanErrors.collect { msg ->
+                _snackbarEvent.emit(msg)
             }
         }
     }
@@ -299,12 +241,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _selectedMessage.value = null
             _snackbarEvent.emit("已清空收件箱")
         }
-    }
-
-    fun simulateIncoming(senderName: String? = null, content: String? = null) {
-        val activeName = senderName ?: currentDevice.value?.name ?: "我的 Windows 电脑"
-        val text = content ?: "你好，测试一下蓝牙传输。时间：${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}"
-        bluetoothManager.simulateIncomingMessage(activeName, text)
     }
 
     override fun onCleared() {

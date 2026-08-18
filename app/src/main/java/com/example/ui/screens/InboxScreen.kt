@@ -192,7 +192,7 @@ fun InboxScreen(
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "来自其他设备发送的文本将在此处显示",
+                            text = "接收与发送的文本消息将在此处显示",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MinimalOnSurfaceVariant
                         )
@@ -225,7 +225,9 @@ fun InboxMessageCard(
     message: MessageEntity,
     onClick: () -> Unit
 ) {
-    val isUnread = message.readAt == null
+    val isOutgoing = message.isOutgoing
+    val isUnread = !isOutgoing && message.readAt == null
+    val displayName = if (isOutgoing) message.receiverDeviceName else message.senderDeviceName
     val timeFormatted = remember(message.createdAt) {
         val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
         val dateSdf = SimpleDateFormat("MM-dd", Locale.getDefault())
@@ -265,8 +267,8 @@ fun InboxMessageCard(
                     modifier = Modifier.weight(1f)
                 ) {
                     val deviceIcon = when {
-                        message.senderDeviceName.contains("电脑") || message.senderDeviceName.contains("Windows") -> Icons.Default.Computer
-                        message.senderDeviceName.contains("平板") || message.senderDeviceName.contains("iPad") -> Icons.Default.Tablet
+                        displayName.contains("电脑") || displayName.contains("Windows") -> Icons.Default.Computer
+                        displayName.contains("平板") || displayName.contains("iPad") -> Icons.Default.Tablet
                         else -> Icons.Default.PhoneAndroid
                     }
 
@@ -279,8 +281,18 @@ fun InboxMessageCard(
 
                     Spacer(modifier = Modifier.width(8.dp))
 
+                    if (isOutgoing) {
+                        Text(
+                            text = "我 → ",
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontWeight = if (isUnread) FontWeight.Bold else FontWeight.SemiBold
+                            ),
+                            color = MinimalPrimary
+                        )
+                    }
+
                     Text(
-                        text = message.senderDeviceName,
+                        text = displayName,
                         style = MaterialTheme.typography.titleSmall.copy(
                             fontWeight = if (isUnread) FontWeight.Bold else FontWeight.SemiBold
                         ),

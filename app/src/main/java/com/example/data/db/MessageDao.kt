@@ -13,7 +13,7 @@ interface MessageDao {
     @Query("SELECT * FROM messages ORDER BY createdAt DESC")
     fun getAllMessages(): Flow<List<MessageEntity>>
 
-    @Query("SELECT * FROM messages WHERE isOutgoing = 0 ORDER BY createdAt DESC")
+    @Query("SELECT * FROM messages ORDER BY createdAt DESC")
     fun getInboxMessages(): Flow<List<MessageEntity>>
 
     @Query("SELECT COUNT(*) FROM messages WHERE isOutgoing = 0 AND readAt IS NULL")

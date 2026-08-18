@@ -26,7 +26,6 @@ import androidx.compose.material.icons.filled.Tablet
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -93,6 +92,39 @@ fun DeviceSelectionSheet(
                 modifier = Modifier.padding(bottom = 16.dp)
             )
 
+            Button(
+                onClick = {
+                    onDismiss()
+                    onAddDeviceClick()
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp)
+                    .testTag("add_device_button"),
+                shape = CircleShape,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MinimalPrimary,
+                    contentColor = Color.White
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "添加设备",
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "添加设备",
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             if (devices.isEmpty()) {
                 Box(
                     modifier = Modifier
@@ -101,7 +133,7 @@ fun DeviceSelectionSheet(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "暂无已保存设备，请点击下方添加",
+                        text = "暂无已保存设备，请点击上方添加",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MinimalOnSurfaceVariant
                     )
@@ -141,41 +173,6 @@ fun DeviceSelectionSheet(
                         )
                     }
                 }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-            HorizontalDivider(color = MinimalOutline)
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Button(
-                onClick = {
-                    onDismiss()
-                    onAddDeviceClick()
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(54.dp)
-                    .testTag("add_device_button"),
-                shape = CircleShape,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MinimalPrimary,
-                    contentColor = Color.White
-                )
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = "添加设备",
-                    tint = Color.White,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "添加设备",
-                    style = MaterialTheme.typography.labelLarge.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
-                    )
-                )
             }
 
             Spacer(modifier = Modifier.height(24.dp))

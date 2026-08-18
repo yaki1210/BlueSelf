@@ -16,7 +16,6 @@ import com.example.data.model.DeviceEntity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -38,6 +37,15 @@ data class ScannedBluetoothDevice(
     val deviceType: String = "OTHER"
 )
 
+/**
+ * BluetoothManager 负责蓝牙连接管理：
+ *   - scanDevices(): 扫描附近设备（含已配对设备）
+ *   - connect(device) / disconnect(device): 建立/断开持久连接（Bluetooth Classic + RFCOMM）
+ *   - send(message): 通过已建立的 Socket 发送文本
+ *   - observeConnectionState(): 以 StateFlow 暴露 OFFLINE / CONNECTING / ONLINE 状态
+ *
+ * UI 上的灰 / 黄 / 绿圆点直接由 connectionState 驱动。
+ */
 class BluetoothManager(private val context: Context) {
     private val tag = "BluetoothManager"
     private val sppUuid: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
@@ -65,13 +73,17 @@ class BluetoothManager(private val context: Context) {
     private val _incomingMessages = MutableSharedFlow<MessageProtocol.Packet>(extraBufferCapacity = 64)
     val incomingMessages: SharedFlow<MessageProtocol.Packet> = _incomingMessages.asSharedFlow()
 
+    private val _connectionErrors = MutableSharedFlow<String>(extraBufferCapacity = 4)
+    val connectionErrors: SharedFlow<String> = _connectionErrors.asSharedFlow()
+
+    private val _scanErrors = MutableSharedFlow<String>(extraBufferCapacity = 4)
+    val scanErrors: SharedFlow<String> = _scanErrors.asSharedFlow()
+
     private var activeSocket: BluetoothSocket? = null
     private var outputStream: OutputStream? = null
     private var readJob: Job? = null
     private var serverJob: Job? = null
     private var serverSocket: BluetoothServerSocket? = null
-
-    private var isSimulatedConnection = false
 
     private val discoveryReceiver = object : BroadcastReceiver() {
         @SuppressLint("MissingPermission")
@@ -117,11 +129,11 @@ class BluetoothManager(private val context: Context) {
 
     @SuppressLint("MissingPermission")
     fun getPairedDevices(): List<ScannedBluetoothDevice> {
-        val adapter = bluetoothAdapter ?: return getDemoPairedDevices()
+        val adapter = bluetoothAdapter ?: return emptyList()
         return try {
             val bonded = adapter.bondedDevices
             if (bonded.isNullOrEmpty()) {
-                getDemoPairedDevices()
+                emptyList()
             } else {
                 bonded.map { device ->
                     val name = device.name ?: "未知设备"
@@ -135,17 +147,8 @@ class BluetoothManager(private val context: Context) {
                 }
             }
         } catch (_: SecurityException) {
-            getDemoPairedDevices()
+            emptyList()
         }
-    }
-
-    private fun getDemoPairedDevices(): List<ScannedBluetoothDevice> {
-        return listOf(
-            ScannedBluetoothDevice("我的 Windows 电脑", "00:1A:7D:DA:71:13", true, "PC"),
-            ScannedBluetoothDevice("Galaxy S24", "44:6D:57:C2:A8:90", true, "PHONE"),
-            ScannedBluetoothDevice("Pixel 8", "3C:28:6D:E1:92:04", true, "PHONE"),
-            ScannedBluetoothDevice("小米手机", "E4:5F:01:88:AA:BC", true, "PHONE")
-        )
     }
 
     @SuppressLint("MissingPermission")
@@ -159,14 +162,9 @@ class BluetoothManager(private val context: Context) {
 
         val adapter = bluetoothAdapter
         if (adapter == null || !adapter.isEnabled) {
-            // Simulate discovered devices for emulator
+            _isScanning.value = false
             scope.launch {
-                delay(1200)
-                updateScannedList(ScannedBluetoothDevice("MacBook Pro (办公)", "F8:FF:C2:5E:21:40", false, "PC"))
-                delay(1000)
-                updateScannedList(ScannedBluetoothDevice("iPad Air", "AC:BC:32:89:12:33", false, "TABLET"))
-                delay(1500)
-                _isScanning.value = false
+                _scanErrors.emit("蓝牙未开启或设备不支持，请打开系统蓝牙后重试")
             }
             return
         }
@@ -187,6 +185,9 @@ class BluetoothManager(private val context: Context) {
             adapter.startDiscovery()
         } catch (_: SecurityException) {
             _isScanning.value = false
+            scope.launch {
+                _scanErrors.emit("缺少蓝牙扫描权限，请在系统设置中授权后重试")
+            }
         }
     }
 
@@ -224,11 +225,8 @@ class BluetoothManager(private val context: Context) {
 
             val adapter = bluetoothAdapter
             if (adapter == null || !adapter.isEnabled) {
-                // Connect via simulated bridge
-                delay(1500)
-                isSimulatedConnection = true
-                _connectionState.value = BluetoothConnectionState.ONLINE
-                Log.d(tag, "Connected to virtual device: ${device.name}")
+                _connectionState.value = BluetoothConnectionState.OFFLINE
+                _connectionErrors.emit("蓝牙未开启或设备不支持，无法连接 ${device.name}")
                 return@launch
             }
 
@@ -250,27 +248,25 @@ class BluetoothManager(private val context: Context) {
                         socket = bluetoothDevice.createRfcommSocketToServiceRecord(appUuid)
                         socket.connect()
                     } catch (e2: Exception) {
-                        Log.w(tag, "Direct socket failed, falling back to simulated connection: ${e2.message}")
+                        Log.w(tag, "Direct socket failed: ${e2.message}")
                     }
                 }
 
                 if (socket != null && socket.isConnected) {
                     activeSocket = socket
                     outputStream = socket.outputStream
-                    isSimulatedConnection = false
                     _connectionState.value = BluetoothConnectionState.ONLINE
                     startReading(socket)
                 } else {
-                    // Fallback to simulated connection for virtual/unsupported hardware
-                    delay(1000)
-                    isSimulatedConnection = true
-                    _connectionState.value = BluetoothConnectionState.ONLINE
+                    _connectionState.value = BluetoothConnectionState.OFFLINE
+                    _connectionErrors.emit(
+                        "无法连接到 ${device.name}（${device.macAddress}），请确认目标设备已开启蓝牙并运行 selftrans"
+                    )
                 }
             } catch (e: Exception) {
                 Log.e(tag, "Connection error: ${e.message}")
-                delay(800)
-                isSimulatedConnection = true
-                _connectionState.value = BluetoothConnectionState.ONLINE
+                _connectionState.value = BluetoothConnectionState.OFFLINE
+                _connectionErrors.emit("连接失败：${e.message ?: "未知错误"}")
             }
         }
     }
@@ -286,7 +282,6 @@ class BluetoothManager(private val context: Context) {
         }
         activeSocket = null
         outputStream = null
-        isSimulatedConnection = false
         _connectionState.value = BluetoothConnectionState.OFFLINE
     }
 
@@ -308,37 +303,15 @@ class BluetoothManager(private val context: Context) {
 
         try {
             val stream = outputStream
-            if (stream != null && !isSimulatedConnection) {
-                stream.write(encoded.toByteArray(Charsets.UTF_8))
-                stream.flush()
-            } else {
-                // Simulated transport delay
-                delay(300)
+            if (stream == null) {
+                return@withContext Result.failure(IllegalStateException("蓝牙连接未就绪"))
             }
+            stream.write(encoded.toByteArray(Charsets.UTF_8))
+            stream.flush()
             Result.success(packet)
         } catch (e: Exception) {
             Log.e(tag, "Send error: ${e.message}")
             Result.failure(e)
-        }
-    }
-
-    /**
-     * Injects a simulated received message (e.g. from "我的 Windows 电脑" or connected device).
-     */
-    fun simulateIncomingMessage(
-        senderName: String = _activeDevice.value?.name ?: "我的 Windows 电脑",
-        content: String = "你好，测试一下蓝牙传输"
-    ) {
-        scope.launch {
-            val packet = MessageProtocol.Packet(
-                senderId = _activeDevice.value?.id ?: "sim_pc_01",
-                senderName = senderName,
-                receiverId = "local_android",
-                receiverName = "Android 本机",
-                content = content,
-                timestamp = System.currentTimeMillis()
-            )
-            _incomingMessages.emit(packet)
         }
     }
 

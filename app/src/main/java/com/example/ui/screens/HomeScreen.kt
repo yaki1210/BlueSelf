@@ -403,41 +403,6 @@ fun HomeScreen(
                 }
             }
 
-            // Quick Simulation helper bar for testing
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp),
-                shape = RoundedCornerShape(14.dp),
-                color = MinimalSurfaceVariant.copy(alpha = 0.8f)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "💡 模拟 Windows 电脑发送文本到 Android",
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                        color = MinimalOnSurfaceVariant
-                    )
-
-                    Button(
-                        onClick = { viewModel.simulateIncoming() },
-                        shape = CircleShape,
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MinimalPrimary.copy(alpha = 0.12f),
-                            contentColor = MinimalPrimary
-                        )
-                    ) {
-                        Text("模拟接收", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
-                    }
-                }
-            }
-
             // Clean bottom indicator bar
             Box(
                 modifier = Modifier
