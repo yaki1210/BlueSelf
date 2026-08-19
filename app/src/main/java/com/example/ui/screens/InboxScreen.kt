@@ -45,19 +45,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.R
 import com.example.data.model.MessageEntity
-import com.example.ui.theme.MinimalBackground
-import com.example.ui.theme.MinimalOnSurface
-import com.example.ui.theme.MinimalOnSurfaceVariant
-import com.example.ui.theme.MinimalOutline
-import com.example.ui.theme.MinimalPrimary
-import com.example.ui.theme.MinimalSurface
-import com.example.ui.theme.MinimalSurfaceVariant
 import com.example.ui.theme.StatusError
 import com.example.ui.viewmodel.MainViewModel
 import java.text.SimpleDateFormat
@@ -78,17 +73,8 @@ fun InboxScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "收件箱",
-                            style = MaterialTheme.typography.titleLarge.copy(
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = (-0.3).sp
-                            ),
-                            color = MinimalOnSurface
-                        )
-                        if (unreadCount > 0) {
-                            Spacer(modifier = Modifier.width(8.dp))
+                    if (unreadCount > 0) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Surface(
                                 shape = CircleShape,
                                 color = StatusError
@@ -112,8 +98,8 @@ fun InboxScreen(
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
-                            tint = MinimalPrimary
+                            contentDescription = stringResource(R.string.back),
+                            tint = MaterialTheme.colorScheme.primary
                         )
                     }
                 },
@@ -125,8 +111,8 @@ fun InboxScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.DoneAll,
-                                contentDescription = "全部标为已读",
-                                tint = MinimalPrimary
+                                contentDescription = stringResource(R.string.mark_all_read),
+                                tint = MaterialTheme.colorScheme.primary
                             )
                         }
 
@@ -136,18 +122,18 @@ fun InboxScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.DeleteSweep,
-                                contentDescription = "清空收件箱",
-                                tint = MinimalOnSurfaceVariant
+                                contentDescription = stringResource(R.string.clear_inbox),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MinimalBackground
+                    containerColor = MaterialTheme.colorScheme.background
                 )
             )
         },
-        containerColor = MinimalBackground,
+        containerColor = MaterialTheme.colorScheme.background,
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
@@ -172,29 +158,29 @@ fun InboxScreen(
                     ) {
                         Surface(
                             shape = CircleShape,
-                            color = MinimalSurfaceVariant,
+                            color = MaterialTheme.colorScheme.surfaceVariant,
                             modifier = Modifier.size(68.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     imageVector = Icons.Default.Inbox,
                                     contentDescription = null,
-                                    tint = MinimalPrimary,
+                                    tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(32.dp)
                                 )
                             }
                         }
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = "收件箱空空如也",
+                            text = stringResource(R.string.inbox_empty),
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                            color = MinimalOnSurface
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "接收与发送的文本消息将在此处显示",
+                            text = stringResource(R.string.inbox_empty_hint),
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MinimalOnSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -244,11 +230,11 @@ fun InboxMessageCard(
             .testTag("inbox_message_item_${message.id}"),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isUnread) MinimalSurface else MinimalSurfaceVariant
+            containerColor = if (isUnread) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant
         ),
         border = androidx.compose.foundation.BorderStroke(
             width = if (isUnread) 1.5.dp else 1.dp,
-            color = if (isUnread) MinimalPrimary.copy(alpha = 0.5f) else MinimalOutline
+            color = if (isUnread) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline
         )
     ) {
         Column(
@@ -275,7 +261,7 @@ fun InboxMessageCard(
                     Icon(
                         imageVector = deviceIcon,
                         contentDescription = null,
-                        tint = if (isUnread) MinimalPrimary else MinimalOnSurfaceVariant,
+                        tint = if (isUnread) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(18.dp)
                     )
 
@@ -283,11 +269,11 @@ fun InboxMessageCard(
 
                     if (isOutgoing) {
                         Text(
-                            text = "我 → ",
+                            text = stringResource(R.string.my_to_prefix),
                             style = MaterialTheme.typography.titleSmall.copy(
                                 fontWeight = if (isUnread) FontWeight.Bold else FontWeight.SemiBold
                             ),
-                            color = MinimalPrimary
+                            color = MaterialTheme.colorScheme.primary
                         )
                     }
 
@@ -296,7 +282,7 @@ fun InboxMessageCard(
                         style = MaterialTheme.typography.titleSmall.copy(
                             fontWeight = if (isUnread) FontWeight.Bold else FontWeight.SemiBold
                         ),
-                        color = MinimalOnSurface,
+                        color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -314,7 +300,7 @@ fun InboxMessageCard(
                 Text(
                     text = timeFormatted,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MinimalOnSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
@@ -328,7 +314,7 @@ fun InboxMessageCard(
                     fontSize = 15.sp,
                     lineHeight = 22.sp
                 ),
-                color = if (isUnread) MinimalOnSurface else MinimalOnSurfaceVariant,
+                color = if (isUnread) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis
             )

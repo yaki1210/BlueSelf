@@ -39,19 +39,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.R
 import com.example.bluetooth.BluetoothConnectionState
 import com.example.data.model.DeviceEntity
-import com.example.ui.theme.MinimalBackground
-import com.example.ui.theme.MinimalOnSurface
-import com.example.ui.theme.MinimalOnSurfaceVariant
-import com.example.ui.theme.MinimalOutline
-import com.example.ui.theme.MinimalPillBg
-import com.example.ui.theme.MinimalPrimary
-import com.example.ui.theme.MinimalSurface
-import com.example.ui.theme.MinimalSurfaceVariant
 import com.example.ui.theme.StatusConnecting
 import com.example.ui.theme.StatusOffline
 import com.example.ui.theme.StatusOnline
@@ -73,7 +67,7 @@ fun DeviceSelectionSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
-        containerColor = MinimalBackground,
+        containerColor = MaterialTheme.colorScheme.background,
         modifier = Modifier.testTag("device_selection_sheet")
     ) {
         Column(
@@ -82,13 +76,13 @@ fun DeviceSelectionSheet(
                 .padding(horizontal = 24.dp, vertical = 12.dp)
         ) {
             Text(
-                text = "选择设备",
+                text = stringResource(R.string.device_selector_placeholder),
                 style = MaterialTheme.typography.titleLarge.copy(
                     fontWeight = FontWeight.Bold,
                     fontSize = 20.sp,
                     letterSpacing = (-0.3).sp
                 ),
-                color = MinimalOnSurface,
+                color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.padding(bottom = 16.dp)
             )
 
@@ -103,19 +97,19 @@ fun DeviceSelectionSheet(
                     .testTag("add_device_button"),
                 shape = CircleShape,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = MinimalPrimary,
+                    containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = Color.White
                 )
             ) {
                 Icon(
                     imageVector = Icons.Default.Add,
-                    contentDescription = "添加设备",
+                    contentDescription = stringResource(R.string.add_device),
                     tint = Color.White,
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "添加设备",
+                    text = stringResource(R.string.add_device),
                     style = MaterialTheme.typography.labelLarge.copy(
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp
@@ -133,9 +127,9 @@ fun DeviceSelectionSheet(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "暂无已保存设备，请点击上方添加",
+                        text = stringResource(R.string.no_saved_devices),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MinimalOnSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             } else {
@@ -149,15 +143,15 @@ fun DeviceSelectionSheet(
                         val isSelected = currentDevice?.id == device.id
                         val (statusColor, statusText) = when {
                             isSelected && globalConnectionState == BluetoothConnectionState.ONLINE ->
-                                StatusOnline to "在线"
+                                StatusOnline to stringResource(R.string.status_online)
                             isSelected && globalConnectionState == BluetoothConnectionState.CONNECTING ->
-                                StatusConnecting to "正在连接…"
+                                StatusConnecting to stringResource(R.string.status_connecting)
                             device.lastKnownState == "ONLINE" && !isSelected ->
-                                StatusOnline to "在线"
+                                StatusOnline to stringResource(R.string.status_online)
                             device.lastKnownState == "CONNECTING" ->
-                                StatusConnecting to "正在连接…"
+                                StatusConnecting to stringResource(R.string.status_connecting)
                             else ->
-                                StatusOffline to "离线"
+                                StatusOffline to stringResource(R.string.status_offline)
                         }
 
                         DeviceItemRow(
@@ -195,9 +189,9 @@ fun DeviceItemRow(
             .clip(RoundedCornerShape(20.dp))
             .clickable(onClick = onClick)
             .testTag("device_item_${device.id}"),
-        color = if (isSelected) MinimalSurfaceVariant else Color.Transparent,
+        color = if (isSelected) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent,
         shape = RoundedCornerShape(20.dp),
-        border = if (isSelected) androidx.compose.foundation.BorderStroke(1.dp, MinimalOutline) else null
+        border = if (isSelected) androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline) else null
     ) {
         Row(
             modifier = Modifier
@@ -223,7 +217,7 @@ fun DeviceItemRow(
             Icon(
                 imageVector = deviceIcon,
                 contentDescription = null,
-                tint = if (isSelected) MinimalPrimary else MinimalOnSurfaceVariant,
+                tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(22.dp)
             )
 
@@ -236,7 +230,7 @@ fun DeviceItemRow(
                     style = MaterialTheme.typography.bodyLarge.copy(
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                     ),
-                    color = MinimalOnSurface
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -247,7 +241,7 @@ fun DeviceItemRow(
                     Text(
                         text = " · ${device.macAddress}",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MinimalOnSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -255,8 +249,8 @@ fun DeviceItemRow(
             if (isSelected) {
                 Icon(
                     imageVector = Icons.Default.Check,
-                    contentDescription = "当前选中",
-                    tint = MinimalPrimary,
+                    contentDescription = stringResource(R.string.current_selected),
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
@@ -268,8 +262,8 @@ fun DeviceItemRow(
             ) {
                 Icon(
                     imageVector = Icons.Default.Delete,
-                    contentDescription = "删除设备",
-                    tint = MinimalOnSurfaceVariant.copy(alpha = 0.6f),
+                    contentDescription = stringResource(R.string.delete_device),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                     modifier = Modifier.size(18.dp)
                 )
             }

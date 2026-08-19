@@ -12,6 +12,10 @@ import com.example.data.model.DeviceEntity
 import com.example.data.model.MessageEntity
 import com.example.data.repository.DeviceRepository
 import com.example.data.repository.MessageRepository
+import com.example.data.settings.AppLanguage
+import com.example.data.settings.AppThemeMode
+import com.example.data.settings.SettingsRepository
+import com.example.R
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -27,8 +31,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val db = AppDatabase.getDatabase(application)
     private val deviceRepository = DeviceRepository(db.deviceDao())
     private val messageRepository = MessageRepository(db.messageDao())
+    private val settingsRepository = SettingsRepository(application)
 
     val bluetoothManager = BluetoothManager(application)
+
+    val language: StateFlow<AppLanguage> = settingsRepository.language
+    val themeMode: StateFlow<AppThemeMode> = settingsRepository.themeMode
+
+    private val appContext: Application
+        get() = getApplication()
 
     val savedDevices: StateFlow<List<DeviceEntity>> = deviceRepository.allDevices
         .stateIn(
@@ -92,7 +103,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             bluetoothManager.incomingMessages.collect { packet ->
                 val entity = MessageProtocol.packetToEntity(packet, isOutgoing = false)
                 messageRepository.saveMessage(entity)
-                _snackbarEvent.emit("收到来自 ${packet.senderName} 的新消息")
+                _snackbarEvent.emit(
+                    appContext.getString(R.string.snackbar_received_from, packet.senderName)
+                )
             }
         }
     }
@@ -118,11 +131,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (text.isNotBlank()) {
             _textInput.value = text
             viewModelScope.launch {
-                _snackbarEvent.emit("已粘贴剪贴板内容")
+                _snackbarEvent.emit(appContext.getString(R.string.snackbar_pasted))
             }
         } else {
             viewModelScope.launch {
-                _snackbarEvent.emit("剪贴板为空")
+                _snackbarEvent.emit(appContext.getString(R.string.snackbar_clipboard_empty))
             }
         }
     }
@@ -135,7 +148,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val text = _textInput.value.trim()
         if (text.isEmpty()) {
             viewModelScope.launch {
-                _snackbarEvent.emit("请输入要发送的文本")
+                _snackbarEvent.emit(appContext.getString(R.string.snackbar_enter_text))
             }
             return
         }
@@ -143,7 +156,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val target = currentDevice.value
         if (target == null) {
             viewModelScope.launch {
-                _snackbarEvent.emit("请先选择目标设备")
+                _snackbarEvent.emit(appContext.getString(R.string.snackbar_select_device))
             }
             return
         }
@@ -157,9 +170,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val entity = MessageProtocol.packetToEntity(packet, isOutgoing = true)
                 messageRepository.saveMessage(entity)
                 _textInput.value = "" // Clear on success as specified
-                _snackbarEvent.emit("发送成功")
+                _snackbarEvent.emit(appContext.getString(R.string.snackbar_send_success))
             }.onFailure { err ->
-                _snackbarEvent.emit("发送失败: ${err.message ?: "连接未就绪"}")
+                _snackbarEvent.emit(appContext.getString(R.string.snackbar_send_failed, err.message ?: "connection"))
             }
         }
     }
@@ -168,7 +181,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             deviceRepository.setCurrentDevice(device.id)
             bluetoothManager.connectToDevice(device)
-            _snackbarEvent.emit("正在连接 ${device.name}...")
+            _snackbarEvent.emit(appContext.getString(R.string.snackbar_connecting, device.name))
         }
     }
 
@@ -185,7 +198,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             deviceRepository.saveDevice(entity)
             deviceRepository.setCurrentDevice(entity.id)
             bluetoothManager.connectToDevice(entity)
-            _snackbarEvent.emit("已添加并连接 ${entity.name}")
+            _snackbarEvent.emit(appContext.getString(R.string.snackbar_added_connected, entity.name))
         }
     }
 
@@ -195,12 +208,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             if (currentDevice.value?.id == device.id) {
                 bluetoothManager.disconnect()
             }
-            _snackbarEvent.emit("已删除设备 ${device.name}")
+            _snackbarEvent.emit(appContext.getString(R.string.snackbar_device_deleted, device.name))
         }
     }
 
     fun startDeviceScan() {
         bluetoothManager.startScan()
+    }
+
+    fun setLanguage(language: AppLanguage) {
+        settingsRepository.setLanguage(language)
+    }
+
+    fun setThemeMode(mode: AppThemeMode) {
+        settingsRepository.setThemeMode(mode)
     }
 
     fun stopDeviceScan() {
@@ -221,7 +242,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun markAllInboxRead() {
         viewModelScope.launch {
             messageRepository.markAllAsRead()
-            _snackbarEvent.emit("已全部标记为已读")
+            _snackbarEvent.emit(appContext.getString(R.string.snackbar_mark_all_read))
         }
     }
 
@@ -231,7 +252,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             if (_selectedMessage.value?.id == id) {
                 _selectedMessage.value = null
             }
-            _snackbarEvent.emit("已删除消息")
+            _snackbarEvent.emit(appContext.getString(R.string.snackbar_message_deleted))
         }
     }
 
@@ -239,7 +260,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             messageRepository.clearAll()
             _selectedMessage.value = null
-            _snackbarEvent.emit("已清空收件箱")
+            _snackbarEvent.emit(appContext.getString(R.string.snackbar_inbox_cleared))
         }
     }
 

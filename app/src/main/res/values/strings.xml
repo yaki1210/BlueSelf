@@ -1,3 +1,102 @@
 <resources>
+    <!-- 应用 -->
     <string name="app_name">selftrans</string>
+
+    <!-- 主页 -->
+    <string name="settings_button">设置</string>
+    <string name="device_selector_placeholder">选择设备</string>
+    <string name="no_saved_devices">暂无已保存设备，请点击上方添加</string>
+    <string name="expand_device_list">展开设备列表</string>
+    <string name="current_selected">当前选中</string>
+    <string name="delete_device">删除设备</string>
+    <string name="inbox">收件箱</string>
+    <string name="text_input_placeholder">输入文本……</string>
+    <string name="clear_text">清空文本</string>
+    <string name="bluetooth_ready">BLUETOOTH READY · %1$d 字</string>
+    <string name="bluetooth_status">BLUETOOTH %1$s · %2$d 字</string>
+    <string name="paste">粘贴</string>
+    <string name="send">发送</string>
+    <string name="status_online">在线</string>
+    <string name="status_connecting">正在连接…</string>
+    <string name="status_offline">离线</string>
+
+    <!-- 收件箱 -->
+    <string name="back">返回</string>
+    <string name="mark_all_read">全部标为已读</string>
+    <string name="clear_inbox">清空收件箱</string>
+    <string name="inbox_empty">收件箱空空如也</string>
+    <string name="inbox_empty_hint">接收与发送的文本消息将在此处显示</string>
+    <string name="my_to_prefix">我 → </string>
+
+    <!-- 添加设备 -->
+    <string name="add_device">添加设备</string>
+    <string name="rescan">重新扫描</string>
+    <string name="scanning_text">正在扫描附近蓝牙设备…</string>
+    <string name="bluetooth_discovery">蓝牙设备发现</string>
+    <string name="scan_hint">点击设备将发起配对并连接</string>
+    <string name="found_devices">发现的设备 (%1$d)</string>
+    <string name="manual_entry">手动输入</string>
+    <string name="searching_empty">正在寻找附近的蓝牙设备…</string>
+    <string name="no_devices_found">未找到设备，请点击右上角刷新重试</string>
+    <string name="connect_and_add">连接并添加</string>
+    <string name="already_paired">已配对 · </string>
+    <string name="manual_add_title">手动添加蓝牙设备</string>
+    <string name="device_name">设备名称</string>
+    <string name="device_name_placeholder">例如：我的电脑 / 办公平板</string>
+    <string name="mac_address">MAC 地址 / 标识符</string>
+    <string name="mac_address_placeholder">例如：00:1A:7D:DA:71:13</string>
+    <string name="device_type">设备类型</string>
+    <string name="type_pc">电脑</string>
+    <string name="type_phone">手机</string>
+    <string name="type_tablet">平板</string>
+    <string name="add">添加</string>
+    <string name="cancel">取消</string>
+
+    <!-- 消息详情 -->
+    <string name="message_detail">消息详情</string>
+    <string name="delete_message">删除消息</string>
+    <string name="message_sent">已发送</string>
+    <string name="message_received">已接收</string>
+    <string name="message_content">消息内容</string>
+    <string name="copy_text">复制文本</string>
+    <string name="fill_input">填入主页</string>
+    <string name="copied_to_clipboard">已复制到剪贴板</string>
+    <string name="message_not_found">消息不存在或已被删除</string>
+
+    <!-- 设置 -->
+    <string name="settings_title">设置</string>
+    <string name="settings_language_section">语言 · 语言</string>
+    <string name="settings_language_zh">中文</string>
+    <string name="settings_language_en">English</string>
+    <string name="settings_theme_section">主题 · 主题</string>
+    <string name="settings_theme_system">跟随系统</string>
+    <string name="settings_theme_light">亮色</string>
+    <string name="settings_theme_dark">暗色</string>
+
+    <!-- 提示消息（ViewModel） -->
+    <string name="snackbar_pasted">已粘贴剪贴板内容</string>
+    <string name="snackbar_clipboard_empty">剪贴板为空</string>
+    <string name="snackbar_enter_text">请输入要发送的文本</string>
+    <string name="snackbar_select_device">请先选择目标设备</string>
+    <string name="snackbar_send_success">发送成功</string>
+    <string name="snackbar_send_failed">发送失败: %1$s</string>
+    <string name="snackbar_connecting">正在连接 %1$s...</string>
+    <string name="snackbar_added_connected">已添加并连接 %1$s</string>
+    <string name="snackbar_received_from">收到来自 %1$s 的新消息</string>
+    <string name="snackbar_device_deleted">已删除设备 %1$s</string>
+    <string name="snackbar_mark_all_read">已全部标记为已读</string>
+    <string name="snackbar_message_deleted">已删除消息</string>
+    <string name="snackbar_inbox_cleared">已清空收件箱</string>
+
+    <!-- 蓝牙错误提示（BluetoothManager） -->
+    <string name="bt_not_enabled">蓝牙未开启或设备不支持，请打开系统蓝牙后重试</string>
+    <string name="bt_missing_scan_permission">缺少蓝牙扫描权限，请在系统设置中授权后重试</string>
+    <string name="bt_off_connect">蓝牙未开启或设备不支持，无法连接 %1$s</string>
+    <string name="bt_pair_failed">与 %1$s 配对失败：%2$s</string>
+    <string name="bt_connect_failed">无法连接到 %1$s（%2$s）：%3$s。请确认对方已开启蓝牙、运行 selftrans 且已完成配对</string>
+    <string name="bt_connect_generic">连接失败：%1$s</string>
+    <string name="bt_missing_connect_permission">缺少蓝牙连接权限，无法配对</string>
+    <string name="bt_pair_rejected">系统拒绝了配对请求</string>
+    <string name="bt_pair_retry">配对失败或被对方拒绝，请重试</string>
+    <string name="bt_pair_timeout">配对超时，请在两台设备上确认配对请求</string>
 </resources>

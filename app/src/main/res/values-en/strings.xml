@@ -1,0 +1,102 @@
+<resources>
+    <!-- App -->
+    <string name="app_name">selftrans</string>
+
+    <!-- Home -->
+    <string name="settings_button">Settings</string>
+    <string name="device_selector_placeholder">Select device</string>
+    <string name="no_saved_devices">No saved devices. Tap above to add one.</string>
+    <string name="expand_device_list">Expand device list</string>
+    <string name="current_selected">Currently selected</string>
+    <string name="delete_device">Delete device</string>
+    <string name="inbox">Inbox</string>
+    <string name="text_input_placeholder">Enter text...</string>
+    <string name="clear_text">Clear text</string>
+    <string name="bluetooth_ready">BLUETOOTH READY · %1$d chars</string>
+    <string name="bluetooth_status">BLUETOOTH %1$s · %2$d chars</string>
+    <string name="paste">Paste</string>
+    <string name="send">Send</string>
+    <string name="status_online">Online</string>
+    <string name="status_connecting">Connecting…</string>
+    <string name="status_offline">Offline</string>
+
+    <!-- Inbox -->
+    <string name="back">Back</string>
+    <string name="mark_all_read">Mark all as read</string>
+    <string name="clear_inbox">Clear inbox</string>
+    <string name="inbox_empty">Inbox is empty</string>
+    <string name="inbox_empty_hint">Messages received and sent will appear here</string>
+    <string name="my_to_prefix">Me → </string>
+
+    <!-- Add device -->
+    <string name="add_device">Add device</string>
+    <string name="rescan">Rescan</string>
+    <string name="scanning_text">Scanning for nearby Bluetooth devices…</string>
+    <string name="bluetooth_discovery">Bluetooth device discovery</string>
+    <string name="scan_hint">Tap a device to pair and connect</string>
+    <string name="found_devices">Devices found (%1$d)</string>
+    <string name="manual_entry">Enter manually</string>
+    <string name="searching_empty">Searching nearby Bluetooth devices…</string>
+    <string name="no_devices_found">No devices found. Tap refresh to retry.</string>
+    <string name="connect_and_add">Connect &amp; add</string>
+    <string name="already_paired">Paired · </string>
+    <string name="manual_add_title">Add Bluetooth device manually</string>
+    <string name="device_name">Device name</string>
+    <string name="device_name_placeholder">e.g. My PC / office tablet</string>
+    <string name="mac_address">MAC address / identifier</string>
+    <string name="mac_address_placeholder">e.g. 00:1A:7D:DA:71:13</string>
+    <string name="device_type">Device type</string>
+    <string name="type_pc">Computer</string>
+    <string name="type_phone">Phone</string>
+    <string name="type_tablet">Tablet</string>
+    <string name="add">Add</string>
+    <string name="cancel">Cancel</string>
+
+    <!-- Message detail -->
+    <string name="message_detail">Message details</string>
+    <string name="delete_message">Delete message</string>
+    <string name="message_sent">Sent</string>
+    <string name="message_received">Received</string>
+    <string name="message_content">Message content</string>
+    <string name="copy_text">Copy text</string>
+    <string name="fill_input">Fill into home</string>
+    <string name="copied_to_clipboard">Copied to clipboard</string>
+    <string name="message_not_found">Message not found or deleted</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_language_section">Language · 语言</string>
+    <string name="settings_language_zh">中文</string>
+    <string name="settings_language_en">English</string>
+    <string name="settings_theme_section">Theme · 主题</string>
+    <string name="settings_theme_system">Follow system</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+
+    <!-- Snackbars (ViewModel) -->
+    <string name="snackbar_pasted">Clipboard content pasted</string>
+    <string name="snackbar_clipboard_empty">Clipboard is empty</string>
+    <string name="snackbar_enter_text">Please enter text to send</string>
+    <string name="snackbar_select_device">Please select a target device</string>
+    <string name="snackbar_send_success">Sent</string>
+    <string name="snackbar_send_failed">Send failed: %1$s</string>
+    <string name="snackbar_connecting">Connecting to %1$s...</string>
+    <string name="snackbar_added_connected">Added and connected %1$s</string>
+    <string name="snackbar_received_from">New message from %1$s</string>
+    <string name="snackbar_device_deleted">Device %1$s deleted</string>
+    <string name="snackbar_mark_all_read">All marked as read</string>
+    <string name="snackbar_message_deleted">Message deleted</string>
+    <string name="snackbar_inbox_cleared">Inbox cleared</string>
+
+    <!-- Bluetooth errors (BluetoothManager) -->
+    <string name="bt_not_enabled">Bluetooth is off or not supported. Turn it on and retry.</string>
+    <string name="bt_missing_scan_permission">Missing Bluetooth scan permission. Grant it in system settings and retry.</string>
+    <string name="bt_off_connect">Bluetooth is off or not supported. Cannot connect to %1$s.</string>
+    <string name="bt_pair_failed">Pairing with %1$s failed: %2$s</string>
+    <string name="bt_connect_failed">Cannot connect to %1$s (%2$s): %3$s. Make sure the other device has Bluetooth on, runs selftrans, and is paired.</string>
+    <string name="bt_connect_generic">Connection failed: %1$s</string>
+    <string name="bt_missing_connect_permission">Missing Bluetooth connect permission to pair.</string>
+    <string name="bt_pair_rejected">The system rejected the pairing request.</string>
+    <string name="bt_pair_retry">Pairing failed or rejected. Please retry.</string>
+    <string name="bt_pair_timeout">Pairing timed out. Confirm the pairing request on both devices.</string>
+</resources>

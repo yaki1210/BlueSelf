@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Sensors
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -61,23 +62,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.R
 import com.example.bluetooth.BluetoothConnectionState
 import com.example.ui.components.DeviceSelectionSheet
-import com.example.ui.theme.MinimalBackground
-import com.example.ui.theme.MinimalOnSurface
-import com.example.ui.theme.MinimalOnSurfaceVariant
-import com.example.ui.theme.MinimalOutline
-import com.example.ui.theme.MinimalPillBg
-import com.example.ui.theme.MinimalPrimary
-import com.example.ui.theme.MinimalPrimaryDark
-import com.example.ui.theme.MinimalSurface
-import com.example.ui.theme.MinimalSurfaceVariant
 import com.example.ui.theme.StatusConnecting
 import com.example.ui.theme.StatusError
 import com.example.ui.theme.StatusOffline
@@ -88,7 +82,8 @@ import com.example.ui.viewmodel.MainViewModel
 fun HomeScreen(
     viewModel: MainViewModel,
     onNavigateToInbox: () -> Unit,
-    onNavigateToAddDevice: () -> Unit
+    onNavigateToAddDevice: () -> Unit,
+    onNavigateToSettings: () -> Unit
 ) {
     val context = LocalContext.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -110,9 +105,9 @@ fun HomeScreen(
     }
 
     val (statusColor, statusText) = when (connectionState) {
-        BluetoothConnectionState.ONLINE -> StatusOnline to "在线"
-        BluetoothConnectionState.CONNECTING -> StatusConnecting to "正在连接…"
-        BluetoothConnectionState.OFFLINE -> StatusOffline to "离线"
+        BluetoothConnectionState.ONLINE -> StatusOnline to stringResource(R.string.status_online)
+        BluetoothConnectionState.CONNECTING -> StatusConnecting to stringResource(R.string.status_connecting)
+        BluetoothConnectionState.OFFLINE -> StatusOffline to stringResource(R.string.status_offline)
     }
 
     Scaffold(
@@ -130,7 +125,7 @@ fun HomeScreen(
                 .padding(paddingValues)
                 .padding(horizontal = 24.dp, vertical = 8.dp)
         ) {
-            // Header: Device Selector Pill (Left) & Inbox Button with Badge (Right)
+            // Header: [Settings (left)] [Device Selector Pill (center)] [Inbox (right)]
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -138,46 +133,68 @@ fun HomeScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                // Device Selector Pill [Online Dot · My Windows PC ▼]
-                Surface(
+                // Settings Button (top-left)
+                Box(
                     modifier = Modifier
+                        .size(46.dp)
                         .clip(CircleShape)
-                        .clickable { showDeviceSheet = true }
-                        .testTag("device_selector_dropdown"),
-                    color = MinimalPillBg,
-                    shape = CircleShape
+                        .clickable(onClick = onNavigateToSettings)
+                        .testTag("settings_button"),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = stringResource(R.string.settings_button),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+
+                // Device Selector Pill [Online Dot · My Windows PC ▼] (centered)
+                Box(
+                    modifier = Modifier.weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Surface(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .clickable { showDeviceSheet = true }
+                            .testTag("device_selector_dropdown"),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = CircleShape
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(10.dp)
-                                .background(color = statusColor, shape = CircleShape)
-                                .testTag("status_dot")
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(10.dp)
+                                    .background(color = statusColor, shape = CircleShape)
+                                    .testTag("status_dot")
+                            )
 
-                        Spacer(modifier = Modifier.width(10.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
 
-                        Text(
-                            text = currentDevice?.name ?: "选择设备",
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 14.sp,
-                                letterSpacing = (-0.2).sp
-                            ),
-                            color = MinimalOnSurface
-                        )
+                            Text(
+                                text = currentDevice?.name ?: stringResource(R.string.device_selector_placeholder),
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp,
+                                    letterSpacing = (-0.2).sp
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
 
-                        Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
 
-                        Icon(
-                            imageVector = Icons.Default.ArrowDropDown,
-                            contentDescription = "展开设备列表",
-                            tint = MinimalPrimary,
-                            modifier = Modifier.size(18.dp)
-                        )
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = stringResource(R.string.expand_device_list),
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
                 }
 
@@ -192,8 +209,8 @@ fun HomeScreen(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Inbox,
-                        contentDescription = "收件箱",
-                        tint = MinimalPrimary,
+                        contentDescription = stringResource(R.string.inbox),
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(28.dp)
                     )
 
@@ -219,11 +236,11 @@ fun HomeScreen(
                     .testTag("text_input_card"),
                 shape = RoundedCornerShape(32.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MinimalSurfaceVariant
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
                 ),
                 border = androidx.compose.foundation.BorderStroke(
                     width = 1.dp,
-                    color = MinimalOutline
+                    color = MaterialTheme.colorScheme.outline
                 )
             ) {
                 Column(
@@ -236,8 +253,8 @@ fun HomeScreen(
                         onValueChange = { viewModel.onTextInputChange(it) },
                         placeholder = {
                             Text(
-                                text = "输入文本……",
-                                color = MinimalOnSurfaceVariant,
+                                text = stringResource(R.string.text_input_placeholder),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 style = MaterialTheme.typography.bodyLarge.copy(
                                     fontSize = 18.sp,
                                     lineHeight = 26.sp
@@ -251,7 +268,7 @@ fun HomeScreen(
                         textStyle = MaterialTheme.typography.bodyLarge.copy(
                             fontSize = 18.sp,
                             lineHeight = 26.sp,
-                            color = MinimalOnSurface
+                            color = MaterialTheme.colorScheme.onSurface
                         ),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = Color.Transparent,
@@ -273,9 +290,9 @@ fun HomeScreen(
                     ) {
                         Text(
                             text = if (connectionState == BluetoothConnectionState.ONLINE) {
-                                "BLUETOOTH READY · ${textInput.length} 字"
+                                stringResource(R.string.bluetooth_ready, textInput.length)
                             } else {
-                                "BLUETOOTH ${statusText.uppercase()} · ${textInput.length} 字"
+                                stringResource(R.string.bluetooth_status, statusText.uppercase(), textInput.length)
                             },
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontFamily = FontFamily.Monospace,
@@ -283,7 +300,7 @@ fun HomeScreen(
                                 letterSpacing = 1.5.sp,
                                 fontWeight = FontWeight.Medium
                             ),
-                            color = MinimalOnSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
                         if (textInput.isNotEmpty()) {
@@ -293,8 +310,8 @@ fun HomeScreen(
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Clear,
-                                    contentDescription = "清空文本",
-                                    tint = MinimalOnSurfaceVariant,
+                                    contentDescription = stringResource(R.string.clear_text),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(16.dp)
                                 )
                             }
@@ -334,23 +351,23 @@ fun HomeScreen(
                         .testTag("paste_clipboard_button"),
                     shape = CircleShape,
                     colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = MinimalSurface,
-                        contentColor = MinimalPrimary
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        contentColor = MaterialTheme.colorScheme.primary
                     ),
                     border = androidx.compose.foundation.BorderStroke(
                         width = 1.dp,
-                        color = MinimalOutline
+                        color = MaterialTheme.colorScheme.outline
                     )
                 ) {
                     Icon(
                         imageVector = Icons.Default.ContentPaste,
                         contentDescription = null,
-                        tint = MinimalPrimary,
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "粘贴",
+                        text = stringResource(R.string.paste),
                         style = MaterialTheme.typography.labelLarge.copy(
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 15.sp
@@ -358,7 +375,7 @@ fun HomeScreen(
                     )
                 }
 
-                // Send Button (MinimalPrimary slate blue, rounded full pill, white text)
+                // Send Button (primary, rounded full pill, white text)
                 Button(
                     onClick = {
                         keyboardController?.hide()
@@ -368,13 +385,13 @@ fun HomeScreen(
                     modifier = Modifier
                         .weight(1.5f)
                         .height(56.dp)
-                        .shadow(4.dp, CircleShape, spotColor = MinimalPrimary.copy(alpha = 0.3f))
+                        .shadow(4.dp, CircleShape, spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
                         .testTag("send_button"),
                     shape = CircleShape,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = MinimalPrimary,
+                        containerColor = MaterialTheme.colorScheme.primary,
                         contentColor = Color.White,
-                        disabledContainerColor = MinimalPrimary.copy(alpha = 0.35f),
+                        disabledContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
                         disabledContentColor = Color.White.copy(alpha = 0.6f)
                     )
                 ) {
@@ -386,7 +403,7 @@ fun HomeScreen(
                         )
                     } else {
                         Text(
-                            text = "发送",
+                            text = stringResource(R.string.send),
                             style = MaterialTheme.typography.labelLarge.copy(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp
@@ -414,7 +431,7 @@ fun HomeScreen(
                     modifier = Modifier
                         .width(120.dp)
                         .height(4.dp)
-                        .background(color = MinimalOnSurface.copy(alpha = 0.15f), shape = CircleShape)
+                        .background(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f), shape = CircleShape)
                 )
             }
         }

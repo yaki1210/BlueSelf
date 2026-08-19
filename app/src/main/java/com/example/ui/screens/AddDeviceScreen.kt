@@ -65,19 +65,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.R
 import com.example.bluetooth.ScannedBluetoothDevice
-import com.example.ui.theme.MinimalBackground
-import com.example.ui.theme.MinimalOnSurface
-import com.example.ui.theme.MinimalOnSurfaceVariant
-import com.example.ui.theme.MinimalOutline
-import com.example.ui.theme.MinimalPillBg
-import com.example.ui.theme.MinimalPrimary
-import com.example.ui.theme.MinimalSurface
-import com.example.ui.theme.MinimalSurfaceVariant
 import com.example.ui.viewmodel.MainViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -141,12 +135,12 @@ fun AddDeviceScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "添加设备",
+                        text = stringResource(R.string.add_device),
                         style = MaterialTheme.typography.titleLarge.copy(
                             fontWeight = FontWeight.Bold,
                             letterSpacing = (-0.3).sp
                         ),
-                        color = MinimalOnSurface
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 },
                 navigationIcon = {
@@ -156,8 +150,8 @@ fun AddDeviceScreen(
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
-                            tint = MinimalPrimary
+                            contentDescription = stringResource(R.string.back),
+                            tint = MaterialTheme.colorScheme.primary
                         )
                     }
                 },
@@ -170,18 +164,18 @@ fun AddDeviceScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Refresh,
-                            contentDescription = "重新扫描",
-                            tint = MinimalPrimary,
+                            contentDescription = stringResource(R.string.rescan),
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = if (isScanning) Modifier.rotate(angle) else Modifier
                         )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MinimalBackground
+                    containerColor = MaterialTheme.colorScheme.background
                 )
             )
         },
-        containerColor = MinimalBackground,
+        containerColor = MaterialTheme.colorScheme.background,
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
@@ -198,11 +192,11 @@ fun AddDeviceScreen(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MinimalSurfaceVariant
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
                 ),
                 border = androidx.compose.foundation.BorderStroke(
                     width = 1.dp,
-                    color = MinimalOutline
+                    color = MaterialTheme.colorScheme.outline
                 )
             ) {
                 Row(
@@ -218,14 +212,14 @@ fun AddDeviceScreen(
                     ) {
                         Surface(
                             shape = CircleShape,
-                            color = MinimalPillBg,
+                            color = MaterialTheme.colorScheme.surfaceVariant,
                             modifier = Modifier.size(44.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     imageVector = if (isScanning) Icons.Default.BluetoothSearching else Icons.Default.Bluetooth,
                                     contentDescription = null,
-                                    tint = MinimalPrimary,
+                                    tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(24.dp)
                                 )
                             }
@@ -235,14 +229,14 @@ fun AddDeviceScreen(
 
                         Column {
                             Text(
-                                text = if (isScanning) "正在扫描附近蓝牙设备…" else "蓝牙设备发现",
+                                text = if (isScanning) stringResource(R.string.scanning_text) else stringResource(R.string.bluetooth_discovery),
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = MinimalOnSurface
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "点击设备将发起配对并连接",
+                                text = stringResource(R.string.scan_hint),
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MinimalOnSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -251,7 +245,7 @@ fun AddDeviceScreen(
                         CircularProgressIndicator(
                             modifier = Modifier.size(20.dp),
                             strokeWidth = 2.5.dp,
-                            color = MinimalPrimary
+                            color = MaterialTheme.colorScheme.primary
                         )
                     }
                 }
@@ -265,19 +259,19 @@ fun AddDeviceScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "发现的设备 (${scannedDevices.size})",
+                    text = stringResource(R.string.found_devices, scannedDevices.size),
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp
                     ),
-                    color = MinimalOnSurface
+                    color = MaterialTheme.colorScheme.onSurface
                 )
 
                 TextButton(onClick = { showManualAddDialog = true }) {
                     Text(
-                        "手动输入",
+                        stringResource(R.string.manual_entry),
                         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = MinimalPrimary
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
             }
@@ -298,14 +292,14 @@ fun AddDeviceScreen(
                         Icon(
                             imageVector = Icons.Default.BluetoothSearching,
                             contentDescription = null,
-                            tint = MinimalOnSurfaceVariant.copy(alpha = 0.4f),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                             modifier = Modifier.size(52.dp)
                         )
                         Spacer(modifier = Modifier.height(14.dp))
                         Text(
-                            text = if (isScanning) "正在寻找附近的蓝牙设备…" else "未找到设备，请点击右上角刷新重试",
+                            text = if (isScanning) stringResource(R.string.searching_empty) else stringResource(R.string.no_devices_found),
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MinimalOnSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -353,11 +347,11 @@ fun ScannedDeviceCard(
             .testTag("scanned_device_${device.address}"),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MinimalSurface
+            containerColor = MaterialTheme.colorScheme.surface
         ),
         border = androidx.compose.foundation.BorderStroke(
             width = 1.dp,
-            color = MinimalOutline
+            color = MaterialTheme.colorScheme.outline
         )
     ) {
         Row(
@@ -379,14 +373,14 @@ fun ScannedDeviceCard(
             ) {
                 Surface(
                     shape = CircleShape,
-                    color = MinimalSurfaceVariant,
+                    color = MaterialTheme.colorScheme.surfaceVariant,
                     modifier = Modifier.size(42.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = icon,
                             contentDescription = null,
-                            tint = MinimalPrimary,
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(22.dp)
                         )
                     }
@@ -398,20 +392,20 @@ fun ScannedDeviceCard(
                     Text(
                         text = device.name,
                         style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                        color = MinimalOnSurface
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (device.isBonded) {
                             Text(
-                                text = "已配对 · ",
+                                text = stringResource(R.string.already_paired),
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MinimalPrimary
+                                color = MaterialTheme.colorScheme.primary
                             )
                         }
                         Text(
                             text = device.address,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MinimalOnSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -421,13 +415,13 @@ fun ScannedDeviceCard(
                 onClick = onConnectAndAdd,
                 shape = CircleShape,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = MinimalPrimary,
+                    containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = Color.White
                 ),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp)
             ) {
                 Text(
-                    text = "连接并添加",
+                    text = stringResource(R.string.connect_and_add),
                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
                 )
             }
@@ -446,13 +440,13 @@ fun ManualAddDeviceDialog(
 
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = MinimalBackground,
+        containerColor = MaterialTheme.colorScheme.background,
         shape = RoundedCornerShape(28.dp),
         title = {
             Text(
-                "手动添加蓝牙设备",
+                stringResource(R.string.manual_add_title),
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                color = MinimalOnSurface
+                color = MaterialTheme.colorScheme.onSurface
             )
         },
         text = {
@@ -460,8 +454,8 @@ fun ManualAddDeviceDialog(
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("设备名称") },
-                    placeholder = { Text("例如：我的电脑 / 办公平板") },
+                    label = { Text(stringResource(R.string.device_name)) },
+                    placeholder = { Text(stringResource(R.string.device_name_placeholder)) },
                     shape = RoundedCornerShape(16.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -469,29 +463,37 @@ fun ManualAddDeviceDialog(
                 OutlinedTextField(
                     value = address,
                     onValueChange = { address = it },
-                    label = { Text("MAC 地址 / 标识符") },
-                    placeholder = { Text("例如：00:1A:7D:DA:71:13") },
+                    label = { Text(stringResource(R.string.mac_address)) },
+                    placeholder = { Text(stringResource(R.string.mac_address_placeholder)) },
                     shape = RoundedCornerShape(16.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                Text("设备类型", style = MaterialTheme.typography.labelMedium, color = MinimalOnSurfaceVariant)
+                Text(
+                    stringResource(R.string.device_type),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("PC" to "电脑", "PHONE" to "手机", "TABLET" to "平板").forEach { (type, label) ->
+                    listOf(
+                        "PC" to R.string.type_pc,
+                        "PHONE" to R.string.type_phone,
+                        "TABLET" to R.string.type_tablet
+                    ).forEach { (type, labelRes) ->
                         val isSelected = selectedType == type
                         Surface(
                             modifier = Modifier
                                 .clip(CircleShape)
                                 .clickable { selectedType = type },
-                            color = if (isSelected) MinimalPrimary else MinimalPillBg,
+                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
                             shape = CircleShape
                         ) {
                             Text(
-                                text = label,
+                                text = stringResource(labelRes),
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                                 ),
-                                color = if (isSelected) Color.White else MinimalOnSurface,
+                                color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
                             )
                         }
@@ -510,16 +512,16 @@ fun ManualAddDeviceDialog(
                 enabled = name.isNotBlank(),
                 shape = CircleShape,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = MinimalPrimary,
+                    containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = Color.White
                 )
             ) {
-                Text("添加")
+                Text(stringResource(R.string.add))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消", color = MinimalOnSurfaceVariant)
+                Text(stringResource(R.string.cancel), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     )

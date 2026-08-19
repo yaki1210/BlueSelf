@@ -51,18 +51,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.ui.theme.MinimalBackground
-import com.example.ui.theme.MinimalOnSurface
-import com.example.ui.theme.MinimalOnSurfaceVariant
-import com.example.ui.theme.MinimalOutline
-import com.example.ui.theme.MinimalPillBg
-import com.example.ui.theme.MinimalPrimary
-import com.example.ui.theme.MinimalSurface
-import com.example.ui.theme.MinimalSurfaceVariant
+import com.example.R
 import com.example.ui.theme.StatusOnline
 import com.example.ui.viewmodel.MainViewModel
 import java.text.SimpleDateFormat
@@ -93,12 +87,12 @@ fun MessageDetailScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "消息详情",
+                        text = stringResource(R.string.message_detail),
                         style = MaterialTheme.typography.titleLarge.copy(
                             fontWeight = FontWeight.Bold,
                             letterSpacing = (-0.3).sp
                         ),
-                        color = MinimalOnSurface
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 },
                 navigationIcon = {
@@ -108,8 +102,8 @@ fun MessageDetailScreen(
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
-                            tint = MinimalPrimary
+                            contentDescription = stringResource(R.string.back),
+                            tint = MaterialTheme.colorScheme.primary
                         )
                     }
                 },
@@ -124,18 +118,18 @@ fun MessageDetailScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Delete,
-                                contentDescription = "删除消息",
-                                tint = MinimalOnSurfaceVariant
+                                contentDescription = stringResource(R.string.delete_message),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MinimalBackground
+                    containerColor = MaterialTheme.colorScheme.background
                 )
             )
         },
-        containerColor = MinimalBackground,
+        containerColor = MaterialTheme.colorScheme.background,
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
@@ -148,7 +142,7 @@ fun MessageDetailScreen(
                     .padding(paddingValues),
                 contentAlignment = Alignment.Center
             ) {
-                Text("消息不存在或已被删除", color = MinimalOnSurfaceVariant)
+                Text(stringResource(R.string.message_not_found), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
             Column(
@@ -163,11 +157,11 @@ fun MessageDetailScreen(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(24.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = MinimalSurfaceVariant
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
                     ),
                     border = androidx.compose.foundation.BorderStroke(
                         width = 1.dp,
-                        color = MinimalOutline
+                        color = MaterialTheme.colorScheme.outline
                     )
                 ) {
                     Row(
@@ -184,14 +178,14 @@ fun MessageDetailScreen(
 
                         Surface(
                             shape = CircleShape,
-                            color = MinimalPillBg,
+                            color = MaterialTheme.colorScheme.surfaceVariant,
                             modifier = Modifier.size(46.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     imageVector = icon,
                                     contentDescription = null,
-                                    tint = MinimalPrimary,
+                                    tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(24.dp)
                                 )
                             }
@@ -203,25 +197,25 @@ fun MessageDetailScreen(
                             Text(
                                 text = message.senderDeviceName,
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = MinimalOnSurface
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = formattedTime,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MinimalOnSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
 
                         Surface(
                             shape = CircleShape,
-                            color = MinimalSurface,
-                            border = androidx.compose.foundation.BorderStroke(1.dp, MinimalOutline)
+                            color = MaterialTheme.colorScheme.surface,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                         ) {
                             Text(
-                                text = if (message.isOutgoing) "已发送" else "已接收",
+                                text = if (message.isOutgoing) stringResource(R.string.message_sent) else stringResource(R.string.message_received),
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = MinimalPrimary,
+                                color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                             )
                         }
@@ -232,12 +226,12 @@ fun MessageDetailScreen(
 
                 // Message Text Full Body Card
                 Text(
-                    text = "消息内容",
+                    text = stringResource(R.string.message_content),
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp
                     ),
-                    color = MinimalOnSurface,
+                    color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
                 )
 
@@ -249,11 +243,11 @@ fun MessageDetailScreen(
                         .testTag("message_content_card"),
                     shape = RoundedCornerShape(28.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = MinimalSurface
+                        containerColor = MaterialTheme.colorScheme.surface
                     ),
                     border = androidx.compose.foundation.BorderStroke(
                         width = 1.dp,
-                        color = MinimalOutline
+                        color = MaterialTheme.colorScheme.outline
                     )
                 ) {
                     SelectionContainer {
@@ -263,7 +257,7 @@ fun MessageDetailScreen(
                                 fontSize = 17.sp,
                                 lineHeight = 26.sp
                             ),
-                            color = MinimalOnSurface,
+                            color = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(24.dp)
@@ -283,7 +277,7 @@ fun MessageDetailScreen(
                             val clipManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                             val clip = ClipData.newPlainText("Copied Text", message.content)
                             clipManager.setPrimaryClip(clip)
-                            Toast.makeText(context, "已复制到剪贴板", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, context.getString(R.string.copied_to_clipboard), Toast.LENGTH_SHORT).show()
                         },
                         modifier = Modifier
                             .weight(1f)
@@ -291,7 +285,7 @@ fun MessageDetailScreen(
                             .testTag("copy_text_button"),
                         shape = CircleShape,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = MinimalPrimary,
+                            containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = Color.White
                         )
                     ) {
@@ -303,7 +297,7 @@ fun MessageDetailScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "复制文本",
+                            text = stringResource(R.string.copy_text),
                             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
                         )
                     }
@@ -319,20 +313,20 @@ fun MessageDetailScreen(
                             .testTag("fill_input_button"),
                         shape = CircleShape,
                         colors = ButtonDefaults.outlinedButtonColors(
-                            containerColor = MinimalSurface,
-                            contentColor = MinimalPrimary
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            contentColor = MaterialTheme.colorScheme.primary
                         ),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, MinimalOutline)
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Edit,
                             contentDescription = null,
-                            tint = MinimalPrimary,
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "填入主页",
+                            text = stringResource(R.string.fill_input),
                             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
                         )
                     }
