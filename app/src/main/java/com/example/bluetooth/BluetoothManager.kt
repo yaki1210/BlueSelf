@@ -12,6 +12,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
 import android.util.Log
+import com.example.R
 import com.example.data.model.DeviceEntity
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -167,7 +168,7 @@ class BluetoothManager(private val context: Context) {
         if (adapter == null || !adapter.isEnabled) {
             _isScanning.value = false
             scope.launch {
-                _scanErrors.emit("蓝牙未开启或设备不支持，请打开系统蓝牙后重试")
+                _scanErrors.emit(context.getString(R.string.bt_not_enabled))
             }
             return
         }
@@ -190,7 +191,7 @@ class BluetoothManager(private val context: Context) {
         } catch (_: SecurityException) {
             _isScanning.value = false
             scope.launch {
-                _scanErrors.emit("缺少蓝牙扫描权限，请在系统设置中授权后重试")
+                _scanErrors.emit(context.getString(R.string.bt_missing_scan_permission))
             }
         }
     }
@@ -231,7 +232,7 @@ class BluetoothManager(private val context: Context) {
             val adapter = bluetoothAdapter
             if (adapter == null || !adapter.isEnabled) {
                 _connectionState.value = BluetoothConnectionState.OFFLINE
-                _connectionErrors.emit("蓝牙未开启或设备不支持，无法连接 ${device.name}")
+                _connectionErrors.emit(context.getString(R.string.bt_off_connect, device.name))
                 return@launch
             }
 
@@ -246,7 +247,9 @@ class BluetoothManager(private val context: Context) {
                 val bondError = ensureBonded(bluetoothDevice).exceptionOrNull()
                 if (bondError != null) {
                     _connectionState.value = BluetoothConnectionState.OFFLINE
-                    _connectionErrors.emit("与 ${device.name} 配对失败：${bondError.message ?: "未知错误"}")
+                    _connectionErrors.emit(
+                        context.getString(R.string.bt_pair_failed, device.name, bondError.message ?: "")
+                    )
                     return@launch
                 }
 
@@ -291,13 +294,18 @@ class BluetoothManager(private val context: Context) {
                 } else {
                     _connectionState.value = BluetoothConnectionState.OFFLINE
                     _connectionErrors.emit(
-                        "无法连接到 ${device.name}（${device.macAddress}）：${lastError?.message ?: "未知错误"}。请确认对方已开启蓝牙、运行 selftrans 且已完成配对"
+                        context.getString(
+                            R.string.bt_connect_failed,
+                            device.name,
+                            device.macAddress,
+                            lastError?.message ?: ""
+                        )
                     )
                 }
             } catch (e: Exception) {
                 Log.e(tag, "Connection error: ${e.message}")
                 _connectionState.value = BluetoothConnectionState.OFFLINE
-                _connectionErrors.emit("连接失败：${e.message ?: "未知错误"}")
+                _connectionErrors.emit(context.getString(R.string.bt_connect_generic, e.message ?: ""))
             }
         }
     }
@@ -315,10 +323,12 @@ class BluetoothManager(private val context: Context) {
                 val created = try {
                     bluetoothDevice.createBond()
                 } catch (e: SecurityException) {
-                    return@withContext Result.failure<Unit>(SecurityException("缺少蓝牙连接权限，无法配对"))
+                    return@withContext Result.failure<Unit>(
+                        SecurityException(context.getString(R.string.bt_missing_connect_permission))
+                    )
                 }
                 if (!created) {
-                    Result.failure(IllegalStateException("系统拒绝了配对请求"))
+                    Result.failure(IllegalStateException(context.getString(R.string.bt_pair_rejected)))
                 } else {
                     waitForBond(bluetoothDevice)
                 }
@@ -359,8 +369,8 @@ class BluetoothManager(private val context: Context) {
         }
         return when (outcome) {
             true -> Result.success(Unit)
-            false -> Result.failure(IllegalStateException("配对失败或被对方拒绝，请重试"))
-            null -> Result.failure(IllegalStateException("配对超时，请在两台设备上确认配对请求"))
+            false -> Result.failure(IllegalStateException(context.getString(R.string.bt_pair_retry)))
+            null -> Result.failure(IllegalStateException(context.getString(R.string.bt_pair_timeout)))
         }
     }
 
