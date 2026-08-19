@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,7 +13,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -97,62 +98,86 @@ fun SettingsScreen(
                 .padding(horizontal = 24.dp, vertical = 8.dp)
                 .verticalScroll(rememberScrollState())
         ) {
-            // Language section
+            // Language section (single bubble, dividers between options)
             Text(
                 text = stringResource(R.string.settings_language_section),
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(bottom = 12.dp)
+                modifier = Modifier.padding(bottom = 10.dp, top = 4.dp)
             )
-            SettingsOptionRow(
-                label = stringResource(R.string.settings_language_zh),
-                selected = language == AppLanguage.ZH,
-                testTag = "language_zh",
-                onClick = {
-                    viewModel.setLanguage(AppLanguage.ZH)
-                    onLanguageChanged()
-                }
-            )
-            SettingsOptionRow(
-                label = stringResource(R.string.settings_language_en),
-                selected = language == AppLanguage.EN,
-                testTag = "language_en",
-                onClick = {
-                    viewModel.setLanguage(AppLanguage.EN)
-                    onLanguageChanged()
-                }
-            )
+            SettingsBubble {
+                SettingsOptionRow(
+                    label = stringResource(R.string.settings_language_zh),
+                    selected = language == AppLanguage.ZH,
+                    testTag = "language_zh",
+                    onClick = {
+                        viewModel.setLanguage(AppLanguage.ZH)
+                        onLanguageChanged()
+                    }
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                SettingsOptionRow(
+                    label = stringResource(R.string.settings_language_en),
+                    selected = language == AppLanguage.EN,
+                    testTag = "language_en",
+                    onClick = {
+                        viewModel.setLanguage(AppLanguage.EN)
+                        onLanguageChanged()
+                    }
+                )
+            }
 
             Spacer(modifier = Modifier.height(28.dp))
 
-            // Theme section
+            // Theme section (single bubble, dividers between options)
             Text(
                 text = stringResource(R.string.settings_theme_section),
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(bottom = 12.dp)
+                modifier = Modifier.padding(bottom = 10.dp)
             )
-            SettingsOptionRow(
-                label = stringResource(R.string.settings_theme_system),
-                selected = themeMode == AppThemeMode.SYSTEM,
-                testTag = "theme_system",
-                onClick = { viewModel.setThemeMode(AppThemeMode.SYSTEM) }
-            )
-            SettingsOptionRow(
-                label = stringResource(R.string.settings_theme_light),
-                selected = themeMode == AppThemeMode.LIGHT,
-                testTag = "theme_light",
-                onClick = { viewModel.setThemeMode(AppThemeMode.LIGHT) }
-            )
-            SettingsOptionRow(
-                label = stringResource(R.string.settings_theme_dark),
-                selected = themeMode == AppThemeMode.DARK,
-                testTag = "theme_dark",
-                onClick = { viewModel.setThemeMode(AppThemeMode.DARK) }
-            )
+            SettingsBubble {
+                SettingsOptionRow(
+                    label = stringResource(R.string.settings_theme_system),
+                    selected = themeMode == AppThemeMode.SYSTEM,
+                    testTag = "theme_system",
+                    onClick = { viewModel.setThemeMode(AppThemeMode.SYSTEM) }
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                SettingsOptionRow(
+                    label = stringResource(R.string.settings_theme_light),
+                    selected = themeMode == AppThemeMode.LIGHT,
+                    testTag = "theme_light",
+                    onClick = { viewModel.setThemeMode(AppThemeMode.LIGHT) }
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                SettingsOptionRow(
+                    label = stringResource(R.string.settings_theme_dark),
+                    selected = themeMode == AppThemeMode.DARK,
+                    testTag = "theme_dark",
+                    onClick = { viewModel.setThemeMode(AppThemeMode.DARK) }
+                )
+            }
 
             Spacer(modifier = Modifier.height(24.dp))
         }
+    }
+}
+
+@Composable
+private fun SettingsBubble(content: @Composable () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp)),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(20.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outline
+        )
+    ) {
+        Column { content() }
     }
 }
 
@@ -163,43 +188,32 @@ private fun SettingsOptionRow(
     testTag: String,
     onClick: () -> Unit
 ) {
-    Surface(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
+            .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surfaceVariant)
             .clickable(onClick = onClick)
-            .testTag(testTag),
-        color = if (selected) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface,
-        shape = RoundedCornerShape(20.dp),
-        border = androidx.compose.foundation.BorderStroke(
-            width = if (selected) 1.dp else 1.dp,
-            color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.6f) else MaterialTheme.colorScheme.outline
-        )
+            .testTag(testTag)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodyLarge.copy(
-                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
-                ),
-                color = MaterialTheme.colorScheme.onSurface
-            )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge.copy(
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+            ),
+            color = MaterialTheme.colorScheme.onSurface
+        )
 
-            if (selected) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Default.Check,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+        if (selected) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
             }
         }
     }
