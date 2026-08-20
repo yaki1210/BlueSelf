@@ -3,6 +3,10 @@ package com.example.ui.screens
 import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.Context
+import android.net.Uri
+import android.provider.OpenableColumns
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,15 +23,22 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Inbox
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Sensors
@@ -39,7 +50,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -66,17 +76,20 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.R
 import com.example.bluetooth.BluetoothConnectionState
+import com.example.ui.formatSize
 import com.example.ui.components.DeviceSelectionSheet
 import com.example.ui.theme.StatusConnecting
 import com.example.ui.theme.StatusError
 import com.example.ui.theme.StatusOffline
 import com.example.ui.theme.StatusOnline
 import com.example.ui.viewmodel.MainViewModel
+import com.example.ui.viewmodel.PendingAttachment
 
 @Composable
 fun HomeScreen(
@@ -95,8 +108,19 @@ fun HomeScreen(
     val textInput by viewModel.textInput.collectAsStateWithLifecycle()
     val isSending by viewModel.isSending.collectAsStateWithLifecycle()
     val unreadCount by viewModel.unreadCount.collectAsStateWithLifecycle()
+    val pendingAttachments by viewModel.pendingAttachments.collectAsStateWithLifecycle()
 
     var showDeviceSheet by remember { mutableStateOf(false) }
+
+    // Multi-file picker: resolves display name / mime / size per uri.
+    val filePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            val resolved = uris.mapNotNull { uri -> resolveDocument(context, uri) }
+            viewModel.addAttachments(resolved)
+        }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.snackbarEvent.collect { msg ->
@@ -104,10 +128,10 @@ fun HomeScreen(
         }
     }
 
-    val (statusColor, statusText) = when (connectionState) {
-        BluetoothConnectionState.ONLINE -> StatusOnline to stringResource(R.string.status_online)
-        BluetoothConnectionState.CONNECTING -> StatusConnecting to stringResource(R.string.status_connecting)
-        BluetoothConnectionState.OFFLINE -> StatusOffline to stringResource(R.string.status_offline)
+    val statusColor = when (connectionState) {
+        BluetoothConnectionState.ONLINE -> StatusOnline
+        BluetoothConnectionState.CONNECTING -> StatusConnecting
+        BluetoothConnectionState.OFFLINE -> StatusOffline
     }
 
     Scaffold(
@@ -280,7 +304,24 @@ fun HomeScreen(
                         keyboardActions = KeyboardActions(onDone = { keyboardController?.hide() })
                     )
 
-                    // Bottom info label in text area: "BLUETOOTH READY · X 字" & Clear button
+                    // Pending attachments: horizontal chips below the text field
+                    if (pendingAttachments.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            items(pendingAttachments, key = { it.uri }) { attachment ->
+                                AttachmentPreviewChip(
+                                    attachment = attachment,
+                                    onRemove = { viewModel.removeAttachment(attachment.uri) }
+                                )
+                            }
+                        }
+                    }
+
+                    // Bottom info label: total size of pending content (text + attachments),
+                    // plus the character count — the "BLUETOOTH READY" status word is gone.
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -288,12 +329,11 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        val totalSize = textInput.encodeToByteArray().size.toLong() +
+                            pendingAttachments.sumOf { it.size }
+                        val sizeText = formatSize(totalSize)
                         Text(
-                            text = if (connectionState == BluetoothConnectionState.ONLINE) {
-                                stringResource(R.string.bluetooth_ready, textInput.length)
-                            } else {
-                                stringResource(R.string.bluetooth_status, statusText.uppercase(), textInput.length)
-                            },
+                            text = stringResource(R.string.content_size_label, sizeText, textInput.length),
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 11.sp,
@@ -322,56 +362,57 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            // Action Buttons Row: [ 粘贴 (Paste) ]  [ 发送 (Send Text) ]
+            // Action Buttons Row: [粘贴 icon]  [附件 icon]  [发送 (Send)]
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Paste Button (White bg, rounded full pill, slate blue text)
-                OutlinedButton(
-                    onClick = {
-                        val clipManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                        if (clipManager != null && clipManager.hasPrimaryClip() &&
-                            (clipManager.primaryClipDescription?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true ||
-                             clipManager.primaryClipDescription?.hasMimeType(ClipDescription.MIMETYPE_TEXT_HTML) == true)
-                        ) {
-                            val item = clipManager.primaryClip?.getItemAt(0)
-                            val text = item?.text?.toString() ?: item?.uri?.toString() ?: ""
-                            viewModel.pasteClipboardText(text)
-                        } else {
-                            viewModel.pasteClipboardText("https://aistudio.google.com/build")
-                        }
-                    },
+                // Paste: round icon button, consistent with settings/inbox
+                Box(
                     modifier = Modifier
-                        .weight(1f)
-                        .height(56.dp)
+                        .size(46.dp)
+                        .clip(CircleShape)
+                        .clickable {
+                            val clipManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                            if (clipManager != null && clipManager.hasPrimaryClip() &&
+                                (clipManager.primaryClipDescription?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true ||
+                                 clipManager.primaryClipDescription?.hasMimeType(ClipDescription.MIMETYPE_TEXT_HTML) == true)
+                            ) {
+                                val item = clipManager.primaryClip?.getItemAt(0)
+                                val text = item?.text?.toString() ?: item?.uri?.toString() ?: ""
+                                viewModel.pasteClipboardText(text)
+                            } else {
+                                viewModel.pasteClipboardText("https://aistudio.google.com/build")
+                            }
+                        }
                         .testTag("paste_clipboard_button"),
-                    shape = CircleShape,
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        contentColor = MaterialTheme.colorScheme.primary
-                    ),
-                    border = androidx.compose.foundation.BorderStroke(
-                        width = 1.dp,
-                        color = MaterialTheme.colorScheme.outline
-                    )
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.ContentPaste,
-                        contentDescription = null,
+                        contentDescription = stringResource(R.string.paste),
                         tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(26.dp)
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = stringResource(R.string.paste),
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 15.sp
-                        )
+                }
+
+                // Attach: round icon button, opens multi-file picker
+                Box(
+                    modifier = Modifier
+                        .size(46.dp)
+                        .clip(CircleShape)
+                        .clickable { filePicker.launch(arrayOf("*/*")) }
+                        .testTag("attach_file_button"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AttachFile,
+                        contentDescription = stringResource(R.string.attach),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(26.dp)
                     )
                 }
 
@@ -379,11 +420,11 @@ fun HomeScreen(
                 Button(
                     onClick = {
                         keyboardController?.hide()
-                        viewModel.sendText()
+                        viewModel.sendMessage()
                     },
-                    enabled = !isSending && textInput.isNotBlank(),
+                    enabled = !isSending && (textInput.isNotBlank() || pendingAttachments.isNotEmpty()),
                     modifier = Modifier
-                        .weight(1.5f)
+                        .weight(1f)
                         .height(56.dp)
                         .shadow(4.dp, CircleShape, spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
                         .testTag("send_button"),
@@ -455,4 +496,98 @@ fun HomeScreen(
             onDismiss = { showDeviceSheet = false }
         )
     }
+}
+
+/**
+ * A single pending-attachment chip shown under the text field:
+ * file icon as a large low-alpha background, file name (medium) over a small
+ * format label (small), and an X remove button in the top-right corner.
+ */
+@Composable
+private fun AttachmentPreviewChip(
+    attachment: PendingAttachment,
+    onRemove: () -> Unit
+) {
+    val icon = when {
+        attachment.mime.startsWith("image/") -> Icons.Default.Image
+        attachment.mime == "application/pdf" -> Icons.Default.PictureAsPdf
+        else -> Icons.Default.Description
+    }
+    val ext = fileExtension(attachment.name).uppercase()
+
+    Box(
+        modifier = Modifier
+            .width(96.dp)
+            .height(64.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp))
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
+            .testTag("attachment_chip_${attachment.uri}")
+    ) {
+        // Background icon, low alpha as "打底"
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+            modifier = Modifier
+                .align(Alignment.Center)
+                .size(48.dp)
+        )
+        Column(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(horizontal = 10.dp)
+        ) {
+            Text(
+                text = attachment.name,
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = ext.ifBlank { "FILE" },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
+            )
+        }
+        IconButton(
+            onClick = onRemove,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .size(22.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(14.dp)
+            )
+        }
+    }
+}
+
+/** Resolves a content Uri into a [PendingAttachment] (name, mime, size). */
+private fun resolveDocument(context: Context, uri: Uri): PendingAttachment? {
+    var name = "file"
+    var size = 0L
+    runCatching {
+        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            val nameIdx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            val sizeIdx = cursor.getColumnIndex(OpenableColumns.SIZE)
+            if (cursor.moveToFirst()) {
+                if (nameIdx >= 0) name = cursor.getString(nameIdx) ?: "file"
+                if (sizeIdx >= 0 && !cursor.isNull(sizeIdx)) size = cursor.getLong(sizeIdx)
+            }
+        }
+    }
+    val mime = context.contentResolver.getType(uri) ?: "application/octet-stream"
+    return PendingAttachment(uri = uri, name = name, mime = mime, size = size)
+}
+
+/** Returns the extension (without dot) of a file name, or blank when none. */
+private fun fileExtension(name: String): String {
+    val dot = name.lastIndexOf('.')
+    return if (dot > 0 && dot < name.length - 1) name.substring(dot + 1) else ""
 }

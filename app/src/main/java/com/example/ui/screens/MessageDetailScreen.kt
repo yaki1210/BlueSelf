@@ -4,9 +4,11 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,40 +25,55 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Tablet
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.R
+import com.example.bluetooth.TransferProgress
+import com.example.data.model.FileEntity
+import com.example.ui.formatSize
 import com.example.ui.theme.StatusOnline
 import com.example.ui.viewmodel.MainViewModel
 import java.text.SimpleDateFormat
@@ -74,6 +91,17 @@ fun MessageDetailScreen(
     val context = LocalContext.current
     val allMessages by viewModel.allMessages.collectAsStateWithLifecycle()
     val message = allMessages.firstOrNull { it.id == messageId }
+    val files by viewModel.filesFor(messageId).collectAsStateWithLifecycle(initialValue = emptyList())
+    val transferProgress by viewModel.transferProgress.collectAsStateWithLifecycle()
+    val savingFileIds by viewModel.savingFileIds.collectAsStateWithLifecycle()
+
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(Unit) {
+        viewModel.snackbarEvent.collect { msg ->
+            snackbarHostState.showSnackbar(msg)
+        }
+    }
 
     val formattedTime = remember(message?.createdAt) {
         if (message == null) "" else {
@@ -83,6 +111,7 @@ fun MessageDetailScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
@@ -267,6 +296,31 @@ fun MessageDetailScreen(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
+                // Attachments: one row per file, newest order preserved from DB sortOrder
+                if (files.isNotEmpty()) {
+                    Text(
+                        text = stringResource(R.string.files_section),
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    files.forEach { file ->
+                        FileRow(
+                            file = file,
+                            progress = transferProgress[file.id],
+                            isSaving = file.id in savingFileIds,
+                            onDownload = { viewModel.downloadFile(file) }
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
                 // Action Buttons: Copy Text & Fill in Input
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -304,8 +358,9 @@ fun MessageDetailScreen(
 
                     OutlinedButton(
                         onClick = {
+                            // onUseAsInput already navigates to Home; do not call onNavigateBack
+                            // afterwards (it would override the destination to the Inbox).
                             onUseAsInput(message.content)
-                            onNavigateBack()
                         },
                         modifier = Modifier
                             .weight(1f)
@@ -335,3 +390,173 @@ fun MessageDetailScreen(
         }
     }
 }
+
+/**
+ * One attachment row: large file-type icon "打底", file name (large) over the
+ * file size (small, bottom-left), and a status/action button on the right.
+ */
+@Composable
+private fun FileRow(
+    file: FileEntity,
+    progress: TransferProgress?,
+    isSaving: Boolean,
+    onDownload: () -> Unit
+) {
+    val icon = when {
+        file.mimeType.startsWith("image/") -> Icons.Default.Image
+        file.mimeType == "application/pdf" -> Icons.Default.PictureAsPdf
+        else -> Icons.Default.Description
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("file_row_${file.id}"),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        ),
+        border = androidx.compose.foundation.BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outline
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Large low-alpha icon as background base
+            Box(
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(14.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
+                    modifier = Modifier.size(40.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(14.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = file.fileName,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = formatSize(file.fileSize),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (file.status == "RECEIVING") {
+                    // fraction comes from the DB (persisted by observeFileProgress) so the bar
+                    // and percentage are always visible; live progress map refines it if present.
+                    val fraction = (progress?.fraction
+                        ?: file.receivedBytes.toFloat() / file.fileSize.coerceAtLeast(1))
+                        .coerceIn(0f, 1f)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    LinearProgressIndicator(
+                        progress = { fraction },
+                        modifier = Modifier.fillMaxWidth().height(6.dp).clip(CircleShape),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surface
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "${(fraction * 100).toInt()}%",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            // Right-side action per status
+            when {
+                file.isOutgoing -> Unit // no button for sent files
+                file.status == "COMPLETE" -> {
+                    if (isSaving) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(28.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Button(
+                            onClick = onDownload,
+                            modifier = Modifier
+                                .height(40.dp)
+                                .testTag("download_file_button_${file.id}"),
+                            shape = CircleShape,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = Color.White
+                            ),
+                            contentPadding = PaddingValues(horizontal = 16.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Download,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = stringResource(R.string.download),
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                            )
+                        }
+                    }
+                }
+                file.status == "SAVED" -> {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = stringResource(R.string.saved),
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+                file.status == "FAILED" -> {
+                    Text(
+                        text = stringResource(R.string.failed),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    )
+                }
+                else -> {
+                    // RECEIVING without live progress yet
+                    Text(
+                        text = stringResource(R.string.receiving),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+

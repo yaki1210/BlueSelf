@@ -14,6 +14,8 @@ import android.os.Build
 import android.util.Log
 import com.example.R
 import com.example.data.model.DeviceEntity
+import java.io.BufferedInputStream
+import java.io.File
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -29,8 +31,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
-import java.io.BufferedReader
-import java.io.InputStreamReader
 import java.io.OutputStream
 import java.util.UUID
 
@@ -76,6 +76,17 @@ class BluetoothManager(private val context: Context) {
 
     private val _incomingMessages = MutableSharedFlow<MessageProtocol.Packet>(extraBufferCapacity = 64)
     val incomingMessages: SharedFlow<MessageProtocol.Packet> = _incomingMessages.asSharedFlow()
+
+    /** File transfer pipeline: progress / results / remote acks. */
+    val fileTransfer: FileTransferManager = FileTransferManager(
+        stagingDir = File(context.getExternalFilesDir(null), "received"),
+        writeFrame = { frame ->
+            val stream = outputStream
+            if (stream != null && _connectionState.value == BluetoothConnectionState.ONLINE) {
+                FrameCodec.write(stream, frame)
+            }
+        }
+    )
 
     private val _connectionErrors = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val connectionErrors: SharedFlow<String> = _connectionErrors.asSharedFlow()
@@ -130,6 +141,13 @@ class BluetoothManager(private val context: Context) {
     fun isBluetoothSupported(): Boolean = bluetoothAdapter != null
 
     fun isBluetoothEnabled(): Boolean = bluetoothAdapter?.isEnabled == true
+
+    /** The local device's display name: Bluetooth friendly name, falling back to the model. */
+    fun localDeviceName(): String = try {
+        bluetoothAdapter?.name?.takeIf { it.isNotBlank() } ?: Build.MODEL
+    } catch (_: SecurityException) {
+        Build.MODEL
+    }
 
     @SuppressLint("MissingPermission")
     fun getPairedDevices(): List<ScannedBluetoothDevice> {
@@ -377,6 +395,7 @@ class BluetoothManager(private val context: Context) {
     fun disconnect() {
         readJob?.cancel()
         readJob = null
+        fileTransfer.abort()
         try {
             outputStream?.close()
             activeSocket?.close()
@@ -388,16 +407,7 @@ class BluetoothManager(private val context: Context) {
         _connectionState.value = BluetoothConnectionState.OFFLINE
     }
 
-    suspend fun sendTextMessage(text: String, targetDevice: DeviceEntity): Result<MessageProtocol.Packet> = withContext(Dispatchers.IO) {
-        val packet = MessageProtocol.Packet(
-            senderId = "local_android",
-            senderName = "Android 本机",
-            receiverId = targetDevice.id,
-            receiverName = targetDevice.name,
-            content = text,
-            timestamp = System.currentTimeMillis()
-        )
-
+    suspend fun sendTextMessage(packet: MessageProtocol.Packet): Result<MessageProtocol.Packet> = withContext(Dispatchers.IO) {
         val encoded = MessageProtocol.encode(packet)
 
         if (_connectionState.value != BluetoothConnectionState.ONLINE) {
@@ -409,11 +419,30 @@ class BluetoothManager(private val context: Context) {
             if (stream == null) {
                 return@withContext Result.failure(IllegalStateException("蓝牙连接未就绪"))
             }
-            stream.write(encoded.toByteArray(Charsets.UTF_8))
-            stream.flush()
+            FrameCodec.write(stream, MessageProtocol.Frame(MessageProtocol.FT_TXT, System.currentTimeMillis(), encoded))
             Result.success(packet)
         } catch (e: Exception) {
             Log.e(tag, "Send error: ${e.message}")
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Writes an arbitrary frame to the active socket (used by file transfer and future types).
+     */
+    suspend fun sendFrame(type: Int, payload: ByteArray): Result<Unit> = withContext(Dispatchers.IO) {
+        if (_connectionState.value != BluetoothConnectionState.ONLINE) {
+            return@withContext Result.failure(IllegalStateException("蓝牙尚未连接目标设备"))
+        }
+        try {
+            val stream = outputStream
+            if (stream == null) {
+                return@withContext Result.failure(IllegalStateException("蓝牙连接未就绪"))
+            }
+            FrameCodec.write(stream, MessageProtocol.Frame(type, System.currentTimeMillis(), payload))
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(tag, "Send frame error: ${e.message}")
             Result.failure(e)
         }
     }
@@ -422,24 +451,44 @@ class BluetoothManager(private val context: Context) {
         readJob?.cancel()
         readJob = scope.launch {
             try {
-                val reader = BufferedReader(InputStreamReader(socket.inputStream, Charsets.UTF_8))
+                val input = BufferedInputStream(socket.inputStream, 64 * 1024)
                 while (isActive && socket.isConnected) {
-                    val line = reader.readLine() ?: break
-                    if (line.isNotBlank()) {
-                        val active = _activeDevice.value
-                        val packet = MessageProtocol.decode(
-                            rawString = line,
-                            fallbackSenderId = active?.id ?: "remote",
-                            fallbackSenderName = active?.name ?: "远端设备"
-                        )
-                        _incomingMessages.emit(packet)
+                    val frame = try {
+                        FrameCodec.decode(input)
+                    } catch (e: java.io.EOFException) {
+                        break
+                    } catch (e: Exception) {
+                        Log.w(tag, "Frame decode error: ${e.message}")
+                        break
                     }
+                    handleFrame(frame)
                 }
             } catch (e: Exception) {
                 Log.w(tag, "Read stream ended or error: ${e.message}")
             } finally {
                 _connectionState.value = BluetoothConnectionState.OFFLINE
             }
+        }
+    }
+
+    /** Dispatches a decoded inbound frame to the text or file pipeline. */
+    private fun handleFrame(frame: MessageProtocol.Frame) {
+        when (frame.type) {
+            MessageProtocol.FT_TXT -> {
+                val active = _activeDevice.value
+                val packet = MessageProtocol.decodeTextPayload(
+                    payload = frame.payload,
+                    fallbackSenderId = active?.id ?: "remote",
+                    fallbackSenderName = active?.name ?: "远端设备"
+                )
+                _incomingMessages.tryEmit(packet)
+            }
+            MessageProtocol.FT_FILE_START,
+            MessageProtocol.FT_FILE_CHUNK,
+            MessageProtocol.FT_FILE_END -> fileTransfer.onFrame(frame)
+            MessageProtocol.FT_FILE_ACK -> fileTransfer.onAck(frame)
+            MessageProtocol.FT_ERR -> fileTransfer.onError(frame)
+            else -> Unit
         }
     }
 

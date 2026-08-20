@@ -31,6 +31,9 @@ interface MessageDao {
     @Query("UPDATE messages SET readAt = :readAt WHERE id = :id")
     suspend fun markAsRead(id: String, readAt: Long = System.currentTimeMillis())
 
+    @Query("UPDATE messages SET status = :status WHERE id = :id")
+    suspend fun updateStatus(id: String, status: String)
+
     @Query("UPDATE messages SET readAt = :readAt WHERE isOutgoing = 0 AND readAt IS NULL")
     suspend fun markAllAsRead(readAt: Long = System.currentTimeMillis())
 

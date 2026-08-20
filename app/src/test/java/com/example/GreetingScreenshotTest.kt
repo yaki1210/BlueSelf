@@ -29,7 +29,7 @@ class GreetingScreenshotTest {
     composeTestRule.setContent {
       MyApplicationTheme {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-          Text("selftrans")
+          Text("BlueSelf")
         }
       }
     }

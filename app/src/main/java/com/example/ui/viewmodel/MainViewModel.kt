@@ -1,21 +1,29 @@
 package com.example.ui.viewmodel
 
 import android.app.Application
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.R
 import com.example.bluetooth.BluetoothConnectionState
 import com.example.bluetooth.BluetoothManager
+import com.example.bluetooth.FileStart
 import com.example.bluetooth.MessageProtocol
 import com.example.bluetooth.ScannedBluetoothDevice
+import com.example.bluetooth.TransferDirection
+import com.example.bluetooth.TransferProgress
+import com.example.bluetooth.TransferResult
 import com.example.data.db.AppDatabase
+import com.example.data.files.ReceivedFileManager
 import com.example.data.model.DeviceEntity
+import com.example.data.model.FileEntity
 import com.example.data.model.MessageEntity
 import com.example.data.repository.DeviceRepository
 import com.example.data.repository.MessageRepository
 import com.example.data.settings.AppLanguage
 import com.example.data.settings.AppThemeMode
 import com.example.data.settings.SettingsRepository
-import com.example.R
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -23,14 +31,26 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.security.MessageDigest
+import java.util.UUID
+
+/** A file picked by the user that is queued to be sent with the next message. */
+data class PendingAttachment(
+    val uri: Uri,
+    val name: String,
+    val mime: String,
+    val size: Long
+)
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val db = AppDatabase.getDatabase(application)
     private val deviceRepository = DeviceRepository(db.deviceDao())
-    private val messageRepository = MessageRepository(db.messageDao())
+    private val messageRepository = MessageRepository(db.messageDao(), db.fileDao())
     private val settingsRepository = SettingsRepository(application)
 
     val bluetoothManager = BluetoothManager(application)
@@ -60,8 +80,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _textInput = MutableStateFlow("")
     val textInput: StateFlow<String> = _textInput.asStateFlow()
 
+    private val _pendingAttachments = MutableStateFlow<List<PendingAttachment>>(emptyList())
+    val pendingAttachments: StateFlow<List<PendingAttachment>> = _pendingAttachments.asStateFlow()
+
     private val _isSending = MutableStateFlow(false)
     val isSending: StateFlow<Boolean> = _isSending.asStateFlow()
+
+    /** File ids currently being written to Downloads (drive per-file spinners). */
+    private val _savingFileIds = MutableStateFlow<Set<String>>(emptySet())
+    val savingFileIds: StateFlow<Set<String>> = _savingFileIds.asStateFlow()
+
+    /** Live transfer progress keyed by file id (drives progress bars). */
+    val transferProgress: StateFlow<Map<String, TransferProgress>> = bluetoothManager.fileTransfer.progress
 
     val inboxMessages: StateFlow<List<MessageEntity>> = messageRepository.inboxMessages
         .stateIn(
@@ -84,6 +114,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             initialValue = 0
         )
 
+    /** messageId → attachment count, for inbox preview indicators. */
+    val fileCounts: StateFlow<Map<String, Int>> = messageRepository.fileCounts()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyMap()
+        )
+
     private val _selectedMessage = MutableStateFlow<MessageEntity?>(null)
     val selectedMessage: StateFlow<MessageEntity?> = _selectedMessage.asStateFlow()
 
@@ -96,7 +134,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     init {
         observeIncomingMessages()
         observeManagerErrors()
+        observeFileStarts()
+        observeFileResults()
+        observeFileProgress()
     }
+
+    // ---- observation ----
 
     private fun observeIncomingMessages() {
         viewModelScope.launch {
@@ -123,6 +166,91 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Receiver side: FILE_START → insert a RECEIVING file row under the parent message. */
+    private fun observeFileStarts() {
+        viewModelScope.launch {
+            bluetoothManager.fileTransfer.fileStarts.collect { start: FileStart ->
+                val staging = ReceivedFileManager.stagingFile(appContext, start.id)
+                val existing = messageRepository.getFileById(start.id)
+                if (existing == null) {
+                    messageRepository.saveFile(
+                        FileEntity(
+                            id = start.id,
+                            messageId = start.msgId,
+                            fileName = start.name,
+                            mimeType = start.mime,
+                            fileSize = start.size,
+                            md5 = start.md5,
+                            totalChunks = start.totalChunks,
+                            chunkSize = start.chunkSize,
+                            receivedBytes = 0,
+                            stagingPath = staging.absolutePath,
+                            status = "RECEIVING",
+                            isOutgoing = false,
+                            sortOrder = (messageRepository.getFilesForMessageOnce(start.msgId).maxOfOrNull { it.sortOrder } ?: -1) + 1,
+                            createdAt = System.currentTimeMillis()
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    /** Receiver side: FILE_END / ERR → finalize file status (COMPLETE / FAILED). */
+    private fun observeFileResults() {
+        viewModelScope.launch {
+            bluetoothManager.fileTransfer.results.collect { result: TransferResult ->
+                val file = messageRepository.getFileById(result.fileId) ?: return@collect
+                val newStatus = if (result.success && result.md5Match) "COMPLETE" else "FAILED"
+                messageRepository.updateFile(
+                    file.copy(
+                        status = newStatus,
+                        receivedBytes = result.totalBytes
+                    )
+                )
+                if (!result.success) {
+                    ReceivedFileManager.deleteStaging(appContext, result.fileId)
+                }
+                if (result.success) {
+                    _snackbarEvent.emit(
+                        appContext.getString(R.string.snackbar_file_received, file.fileName)
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Receiver side: persist live inbound progress into the file row (throttled) so the
+     * detail screen can always render the progress bar / percentage from the DB instead of
+     * relying on an in-memory map that may be missing.
+     */
+    private fun observeFileProgress() {
+        viewModelScope.launch {
+            var lastWrite = 0L
+            bluetoothManager.fileTransfer.progress.collect { progressMap ->
+                val now = System.currentTimeMillis()
+                progressMap.values
+                    .filter { it.direction == TransferDirection.RECEIVE }
+                    .filter { it.totalBytes > 0 }
+                    .forEach { p ->
+                        val file = messageRepository.getFileById(p.fileId) ?: return@forEach
+                        if (file.status != "RECEIVING") return@forEach
+                        if (p.bytesDone == file.receivedBytes) return@forEach
+                        // Throttle DB writes to ~5/s while still updating on completion chunks.
+                        if (p.fraction >= 1f || now - lastWrite >= 200L) {
+                            lastWrite = now
+                            messageRepository.updateFile(
+                                file.copy(receivedBytes = p.bytesDone)
+                            )
+                        }
+                    }
+            }
+        }
+    }
+
+    // ---- text input & attachments ----
+
     fun onTextInputChange(text: String) {
         _textInput.value = text
     }
@@ -144,9 +272,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _textInput.value = ""
     }
 
-    fun sendText() {
+    fun addAttachments(attachments: List<PendingAttachment>) {
+        // No hard size limit: accept everything, but warn when a file is unusually large.
+        _pendingAttachments.value = (_pendingAttachments.value + attachments).distinctBy { it.uri }
+        if (attachments.any { it.size > MAX_FILE_SIZE_BYTES }) {
+            viewModelScope.launch {
+                _snackbarEvent.emit(appContext.getString(R.string.snackbar_file_large_warning))
+            }
+        }
+    }
+
+    fun removeAttachment(uri: Uri) {
+        _pendingAttachments.value = _pendingAttachments.value.filterNot { it.uri == uri }
+    }
+
+    fun clearAttachments() {
+        _pendingAttachments.value = emptyList()
+    }
+
+    // ---- send ----
+
+    fun sendMessage() {
         val text = _textInput.value.trim()
-        if (text.isEmpty()) {
+        val attachments = _pendingAttachments.value
+        if (text.isEmpty() && attachments.isEmpty()) {
             viewModelScope.launch {
                 _snackbarEvent.emit(appContext.getString(R.string.snackbar_enter_text))
             }
@@ -163,19 +312,177 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             _isSending.value = true
-            val result = bluetoothManager.sendTextMessage(text, target)
-            _isSending.value = false
 
-            result.onSuccess { packet ->
-                val entity = MessageProtocol.packetToEntity(packet, isOutgoing = true)
-                messageRepository.saveMessage(entity)
-                _textInput.value = "" // Clear on success as specified
-                _snackbarEvent.emit(appContext.getString(R.string.snackbar_send_success))
-            }.onFailure { err ->
-                _snackbarEvent.emit(appContext.getString(R.string.snackbar_send_failed, err.message ?: "connection"))
+            // The whole send pipeline (MD5 hashing + blocking socket writes) must run off the
+            // main thread, otherwise the UI freezes/ANRs while a file is being sent.
+            val (allOk, sentBytes, sentDurationMs) = withContext(Dispatchers.IO) {
+                val myName = bluetoothManager.localDeviceName()
+                val messageId = UUID.randomUUID().toString()
+                val hasFiles = attachments.isNotEmpty()
+                val messageEntity = MessageEntity(
+                    id = messageId,
+                    senderDeviceId = "local_android",
+                    senderDeviceName = myName,
+                    receiverDeviceId = target.id,
+                    receiverDeviceName = target.name,
+                    content = text,
+                    createdAt = System.currentTimeMillis(),
+                    receivedAt = null,
+                    readAt = null,
+                    status = "SENDING",
+                    isOutgoing = true,
+                    messageType = if (hasFiles) MessageProtocol.TYPE_FILE else MessageProtocol.TYPE_TEXT
+                )
+                messageRepository.saveMessage(messageEntity)
+
+                // 1) TXT frame first — it carries the message id / text and creates the message on the receiver.
+                val packet = MessageProtocol.Packet(
+                    senderId = "local_android",
+                    senderName = myName,
+                    receiverId = target.id,
+                    receiverName = target.name,
+                    content = text,
+                    id = messageId,
+                    type = if (hasFiles) MessageProtocol.TYPE_FILE else MessageProtocol.TYPE_TEXT,
+                    timestamp = messageEntity.createdAt
+                )
+                val sendResult = bluetoothManager.sendTextMessage(packet)
+
+                // 2) Then each file, one by one. Accumulate bytes/duration to report the real rate.
+                var ok = sendResult.isSuccess
+                var bytes = 0L
+                var durationMs = 0L
+                if (ok) {
+                    for (attachment in attachments) {
+                        val result = sendFileAttachment(attachment, messageId, target.id, target.name)
+                        if (result != null && result.success) {
+                            bytes += result.totalBytes
+                            durationMs += result.durationMs
+                        } else {
+                            ok = false
+                        }
+                    }
+                }
+
+                // 3) Finalize the message row.
+                messageRepository.updateMessageRow(
+                    messageId,
+                    if (ok) "SENT" else "FAILED"
+                )
+                Triple(ok, bytes, durationMs)
+            }
+
+            _isSending.value = false
+            if (allOk) {
+                _textInput.value = ""
+                _pendingAttachments.value = emptyList()
+                if (attachments.isNotEmpty()) {
+                    val mbps = if (sentDurationMs > 0) {
+                        sentBytes * 8.0 / 1_000_000.0 / (sentDurationMs / 1000.0)
+                    } else 0.0
+                    _snackbarEvent.emit(
+                        appContext.getString(R.string.snackbar_files_sent_rate, attachments.size, mbps)
+                    )
+                } else {
+                    _snackbarEvent.emit(appContext.getString(R.string.snackbar_send_success))
+                }
+            } else {
+                _snackbarEvent.emit(
+                    appContext.getString(R.string.snackbar_send_failed, "connection or file error")
+                )
             }
         }
     }
+
+    private suspend fun sendFileAttachment(
+        attachment: PendingAttachment,
+        messageId: String,
+        targetId: String,
+        targetName: String
+    ): TransferResult? {
+        val fileId = UUID.randomUUID().toString()
+        val fileEntity = FileEntity(
+            id = fileId,
+            messageId = messageId,
+            fileName = attachment.name,
+            mimeType = attachment.mime,
+            fileSize = attachment.size,
+            md5 = "",
+            totalChunks = 0,
+            chunkSize = MessageProtocol.DEFAULT_CHUNK_SIZE,
+            receivedBytes = 0,
+            stagingPath = "",
+            status = "SENDING",
+            isOutgoing = true,
+            sortOrder = 0,
+            createdAt = System.currentTimeMillis()
+        )
+        messageRepository.saveFile(fileEntity)
+        return try {
+            val md5 = md5OfUri(attachment.uri)
+            appContext.contentResolver.openInputStream(attachment.uri)?.use { input ->
+                val result = bluetoothManager.fileTransfer.sendFile(
+                    input = input,
+                    fileId = fileId,
+                    msgId = messageId,
+                    name = attachment.name,
+                    mime = attachment.mime,
+                    size = attachment.size,
+                    md5 = md5
+                )
+                messageRepository.updateFile(
+                    fileEntity.copy(
+                        md5 = md5,
+                        totalChunks = (attachment.size + MessageProtocol.DEFAULT_CHUNK_SIZE - 1) / MessageProtocol.DEFAULT_CHUNK_SIZE,
+                        status = if (result.success) "SENT" else "FAILED",
+                        receivedBytes = result.totalBytes
+                    )
+                )
+                result
+            }
+        } catch (e: Exception) {
+            messageRepository.updateFile(fileEntity.copy(status = "FAILED"))
+            null
+        }
+    }
+
+    private fun md5OfUri(uri: Uri): String {
+        val md = MessageDigest.getInstance("MD5")
+        appContext.contentResolver.openInputStream(uri)?.use { input ->
+            val buf = ByteArray(64 * 1024)
+            while (true) {
+                val read = input.read(buf)
+                if (read < 0) break
+                md.update(buf, 0, read)
+            }
+        }
+        return md.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    // ---- file download (move to Downloads) ----
+
+    fun downloadFile(file: FileEntity) {
+        if (file.status != "COMPLETE" || file.id in _savingFileIds.value) return
+        viewModelScope.launch {
+            _savingFileIds.value = _savingFileIds.value + file.id
+            val savedPath = withContext(Dispatchers.IO) {
+                ReceivedFileManager.saveToDownloads(appContext, file)
+            }
+            messageRepository.updateFile(file.copy(status = if (savedPath != null) "SAVED" else "FAILED"))
+            _savingFileIds.value = _savingFileIds.value - file.id
+            _snackbarEvent.emit(
+                appContext.getString(
+                    if (savedPath != null) R.string.snackbar_file_saved_path else R.string.snackbar_file_save_failed,
+                    if (savedPath != null) savedPath else file.fileName
+                )
+            )
+        }
+    }
+
+    fun filesFor(messageId: String): kotlinx.coroutines.flow.Flow<List<FileEntity>> =
+        messageRepository.filesForMessage(messageId)
+
+    // ---- devices / inbox / settings (unchanged) ----
 
     fun selectDevice(device: DeviceEntity) {
         viewModelScope.launch {
@@ -248,6 +555,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteMessage(id: String) {
         viewModelScope.launch {
+            messageRepository.getFilesForMessageOnce(id).forEach { file ->
+                ReceivedFileManager.deleteStaging(appContext, file.id)
+            }
             messageRepository.deleteMessage(id)
             if (_selectedMessage.value?.id == id) {
                 _selectedMessage.value = null
@@ -258,6 +568,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearAllMessages() {
         viewModelScope.launch {
+            // Delete staging files for every stored message before wiping the DB.
+            messageRepository.allMessages.first().forEach { msg ->
+                messageRepository.getFilesForMessageOnce(msg.id).forEach { file ->
+                    ReceivedFileManager.deleteStaging(appContext, file.id)
+                }
+            }
             messageRepository.clearAll()
             _selectedMessage.value = null
             _snackbarEvent.emit(appContext.getString(R.string.snackbar_inbox_cleared))
@@ -267,5 +583,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         super.onCleared()
         bluetoothManager.cleanUp()
+    }
+
+    companion object {
+        // Warning threshold: files above this size are allowed but flagged as slow to transfer.
+        private const val MAX_FILE_SIZE_BYTES = 20L * 1024 * 1024
     }
 }

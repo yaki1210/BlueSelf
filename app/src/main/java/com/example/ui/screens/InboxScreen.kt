@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.DoneAll
@@ -68,6 +69,7 @@ fun InboxScreen(
 ) {
     val inboxMessages by viewModel.inboxMessages.collectAsStateWithLifecycle()
     val unreadCount by viewModel.unreadCount.collectAsStateWithLifecycle()
+    val fileCounts by viewModel.fileCounts.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -194,6 +196,7 @@ fun InboxScreen(
                     items(inboxMessages, key = { it.id }) { message ->
                         InboxMessageCard(
                             message = message,
+                            fileCount = fileCounts[message.id] ?: 0,
                             onClick = {
                                 viewModel.openMessage(message)
                                 onOpenMessageDetail(message)
@@ -209,6 +212,7 @@ fun InboxScreen(
 @Composable
 fun InboxMessageCard(
     message: MessageEntity,
+    fileCount: Int,
     onClick: () -> Unit
 ) {
     val isOutgoing = message.isOutgoing
@@ -318,6 +322,27 @@ fun InboxMessageCard(
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis
             )
+
+            if (fileCount > 0) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.testTag("attachment_indicator_${message.id}")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AttachFile,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = stringResource(R.string.attachment_count, fileCount),
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
         }
     }
 }
