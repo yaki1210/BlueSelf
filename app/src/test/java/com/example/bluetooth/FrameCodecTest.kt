@@ -43,6 +43,24 @@ class FrameCodecTest {
     }
 
     @Test
+    fun `encoded batch equals concatenated single encodes`() {
+        val frames = List(16) { i ->
+            MessageProtocol.Frame(MessageProtocol.FT_FILE_CHUNK, i.toLong(), "chunk-$i".toByteArray(Charsets.UTF_8))
+        }
+        val batched = FrameCodec.encodeBatch(frames)
+        val concatenated = frames.fold(ByteArray(0)) { acc, f -> acc + FrameCodec.encode(f) }
+        assertArrayEquals(concatenated, batched)
+
+        val stream = ByteArrayInputStream(batched)
+        frames.forEachIndexed { i, f ->
+            val decoded = FrameCodec.decode(stream)
+            assertEquals(f.type, decoded.type)
+            assertEquals(i.toLong(), decoded.seq)
+            assertArrayEquals(f.payload, decoded.payload)
+        }
+    }
+
+    @Test
     fun `corrupted payload fails crc check`() {
         val frame = MessageProtocol.Frame(MessageProtocol.FT_TXT, 1, "hello".toByteArray())
         val bytes = FrameCodec.encode(frame)

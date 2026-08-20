@@ -46,7 +46,7 @@ object MessageProtocol {
     const val FT_ERR = 0xF0
 
     // File chunk / pipeline parameters (both ends agree)
-    const val DEFAULT_CHUNK_SIZE = 32 * 1024
+    const val DEFAULT_CHUNK_SIZE = 64 * 1024
     const val SEND_WINDOW = 16
 
     data class Packet(
@@ -165,8 +165,34 @@ object FrameCodec {
     /** Wraps a [MessageProtocol.Frame] into a single frame byte array (header + payload + CRC32). */
     fun encode(frame: MessageProtocol.Frame): ByteArray {
         val payload = frame.payload
-        val total = MessageProtocol.HEADER_SIZE + payload.size + MessageProtocol.CRC_SIZE
+        val out = ByteArray(MessageProtocol.HEADER_SIZE + payload.size + MessageProtocol.CRC_SIZE)
+        fillHeader(out, frame, payload)
+        return out
+    }
+
+    /**
+     * Encodes multiple frames into a single byte array so a whole in-flight window can be
+     * written to the socket with one write()/flush() instead of one call per frame.
+     */
+    fun encodeBatch(frames: List<MessageProtocol.Frame>): ByteArray {
+        if (frames.isEmpty()) return ByteArray(0)
+        val parts = ArrayList<ByteArray>(frames.size)
+        var total = 0
+        for (frame in frames) {
+            val part = encode(frame)
+            parts.add(part)
+            total += part.size
+        }
         val out = ByteArray(total)
+        var offset = 0
+        for (part in parts) {
+            part.copyInto(out, offset)
+            offset += part.size
+        }
+        return out
+    }
+
+    private fun fillHeader(out: ByteArray, frame: MessageProtocol.Frame, payload: ByteArray) {
         out[0] = MessageProtocol.MAGIC0
         out[1] = MessageProtocol.MAGIC1
         out[2] = MessageProtocol.PROTOCOL_VERSION.toByte()
@@ -178,7 +204,6 @@ object FrameCodec {
         val crc = CRC32()
         crc.update(out, 0, MessageProtocol.HEADER_SIZE + payload.size)
         writeUInt32BE(out, MessageProtocol.HEADER_SIZE + payload.size, crc.value)
-        return out
     }
 
     /**

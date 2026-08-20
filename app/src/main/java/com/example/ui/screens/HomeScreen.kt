@@ -385,7 +385,7 @@ fun HomeScreen(
                                 val text = item?.text?.toString() ?: item?.uri?.toString() ?: ""
                                 viewModel.pasteClipboardText(text)
                             } else {
-                                viewModel.pasteClipboardText("https://aistudio.google.com/build")
+                                viewModel.pasteClipboardText("")
                             }
                         }
                         .testTag("paste_clipboard_button"),

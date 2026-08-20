@@ -80,11 +80,8 @@ class BluetoothManager(private val context: Context) {
     /** File transfer pipeline: progress / results / remote acks. */
     val fileTransfer: FileTransferManager = FileTransferManager(
         stagingDir = File(context.getExternalFilesDir(null), "received"),
-        writeFrame = { frame ->
-            val stream = outputStream
-            if (stream != null && _connectionState.value == BluetoothConnectionState.ONLINE) {
-                FrameCodec.write(stream, frame)
-            }
+        writeFrames = { frames ->
+            writeFramesToSocket(frames)
         }
     )
 
@@ -407,6 +404,22 @@ class BluetoothManager(private val context: Context) {
         _connectionState.value = BluetoothConnectionState.OFFLINE
     }
 
+    /**
+     * Writes one or more frames to the active socket in a single write()+flush().
+     * Used by text, arbitrary frames, and the file-transfer pipeline (window batching).
+     */
+    private fun writeFramesToSocket(frames: List<MessageProtocol.Frame>) {
+        if (frames.isEmpty()) return
+        val stream = outputStream
+        if (stream == null || _connectionState.value != BluetoothConnectionState.ONLINE) return
+        try {
+            stream.write(FrameCodec.encodeBatch(frames))
+            stream.flush()
+        } catch (e: Exception) {
+            Log.e(tag, "Write frames error: ${e.message}")
+        }
+    }
+
     suspend fun sendTextMessage(packet: MessageProtocol.Packet): Result<MessageProtocol.Packet> = withContext(Dispatchers.IO) {
         val encoded = MessageProtocol.encode(packet)
 
@@ -415,11 +428,9 @@ class BluetoothManager(private val context: Context) {
         }
 
         try {
-            val stream = outputStream
-            if (stream == null) {
-                return@withContext Result.failure(IllegalStateException("蓝牙连接未就绪"))
-            }
-            FrameCodec.write(stream, MessageProtocol.Frame(MessageProtocol.FT_TXT, System.currentTimeMillis(), encoded))
+            writeFramesToSocket(
+                listOf(MessageProtocol.Frame(MessageProtocol.FT_TXT, System.currentTimeMillis(), encoded))
+            )
             Result.success(packet)
         } catch (e: Exception) {
             Log.e(tag, "Send error: ${e.message}")
@@ -435,11 +446,9 @@ class BluetoothManager(private val context: Context) {
             return@withContext Result.failure(IllegalStateException("蓝牙尚未连接目标设备"))
         }
         try {
-            val stream = outputStream
-            if (stream == null) {
-                return@withContext Result.failure(IllegalStateException("蓝牙连接未就绪"))
-            }
-            FrameCodec.write(stream, MessageProtocol.Frame(type, System.currentTimeMillis(), payload))
+            writeFramesToSocket(
+                listOf(MessageProtocol.Frame(type, System.currentTimeMillis(), payload))
+            )
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(tag, "Send frame error: ${e.message}")
@@ -451,7 +460,7 @@ class BluetoothManager(private val context: Context) {
         readJob?.cancel()
         readJob = scope.launch {
             try {
-                val input = BufferedInputStream(socket.inputStream, 64 * 1024)
+                val input = BufferedInputStream(socket.inputStream, 256 * 1024)
                 while (isActive && socket.isConnected) {
                     val frame = try {
                         FrameCodec.decode(input)

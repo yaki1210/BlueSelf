@@ -6,10 +6,13 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.security.MessageDigest
+import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.TimeUnit
 import kotlin.math.ceil
 import kotlin.math.roundToLong
 
@@ -47,18 +50,20 @@ data class TransferResult(
  * FileTransferManager drives the chunked, windowed file transfer over a byte stream.
  *
  * Send: streams the source, sends FILE_START, then up to [MessageProtocol.SEND_WINDOW]
- * FILE_CHUNK frames in flight, then FILE_END. The receiver replies FILE_ACK periodically.
+ * FILE_CHUNK frames; the whole window is handed to [writeFrames] as one batch so the caller
+ * can emit a single write()+flush() per window, then FILE_END. The receiver replies FILE_ACK
+ * periodically.
  *
- * Receive: at most ONE active incoming file at a time. FILE_START opens a staging file,
- * ordered chunks are appended, an ACK is sent every 8 chunks / 1s, and FILE_END triggers an
- * MD5 verification before the result is reported.
+ * Receive: at most ONE active incoming file at a time. The Bluetooth read loop only decodes
+ * frames and enqueues chunks into a bounded queue; a dedicated writer thread consumes the
+ * queue and writes to disk, so the read side is never blocked by disk I/O. FILE_END triggers
+ * an MD5 verification before the result is reported.
  *
- * RFCOMM/L2CAP is a reliable ordered stream, so chunks arrive in order. A failed MD5 check
- * reports a result with success=false for the caller to handle (full resend).
+ * Progress updates are time-throttled (<= ~10/s) and independent of chunk size.
  */
 class FileTransferManager(
     private val stagingDir: File,
-    private val writeFrame: (MessageProtocol.Frame) -> Unit
+    private val writeFrames: (List<MessageProtocol.Frame>) -> Unit
 ) {
     private val _progress = MutableStateFlow<Map<String, TransferProgress>>(emptyMap())
     val progress: StateFlow<Map<String, TransferProgress>> = _progress.asStateFlow()
@@ -79,6 +84,10 @@ class FileTransferManager(
     @Synchronized
     private fun nextSeq(): Long = ++seqCounter
 
+    private fun sendSingle(frame: MessageProtocol.Frame) {
+        writeFrames(listOf(frame))
+    }
+
     // ---------------- SEND ----------------
 
     /**
@@ -97,7 +106,7 @@ class FileTransferManager(
         val totalChunks = ceil(size.toDouble() / chunkSize).toLong()
         val startTime = System.currentTimeMillis()
 
-        writeFrame(
+        sendSingle(
             MessageProtocol.Frame(
                 type = MessageProtocol.FT_FILE_START,
                 seq = nextSeq(),
@@ -110,20 +119,15 @@ class FileTransferManager(
         val buffer = ByteArray(chunkSize)
         try {
             while (true) {
-                // Fill the in-flight window.
-                val window = mutableListOf<ByteArray>()
+                // Fill the in-flight window, then hand the whole window to writeFrames at once.
+                val window = ArrayList<MessageProtocol.Frame>(MessageProtocol.SEND_WINDOW)
                 while (window.size < MessageProtocol.SEND_WINDOW) {
                     val readSize = input.read(buffer)
                     if (readSize < 0) break
-                    window.add(buffer.copyOf(readSize))
-                }
-                if (window.isEmpty()) break
-
-                window.forEach { bytes ->
-                    val payload = ByteArray(4 + bytes.size)
+                    val payload = ByteArray(4 + readSize)
                     writeUInt32BE(payload, 0, sentChunks)
-                    bytes.copyInto(payload, 4)
-                    writeFrame(
+                    buffer.copyInto(payload, 4, 0, readSize)
+                    window.add(
                         MessageProtocol.Frame(
                             type = MessageProtocol.FT_FILE_CHUNK,
                             seq = nextSeq(),
@@ -131,15 +135,18 @@ class FileTransferManager(
                         )
                     )
                     sentChunks++
-                    sentBytes += bytes.size
+                    sentBytes += readSize
                 }
+                if (window.isEmpty()) break
+
+                writeFrames(window)
                 updateProgress(fileId, TransferDirection.SEND, sentBytes, size)
             }
         } catch (e: Exception) {
             return TransferResult(fileId, false, false, sentBytes, System.currentTimeMillis() - startTime, e.message)
         }
 
-        writeFrame(
+        sendSingle(
             MessageProtocol.Frame(
                 type = MessageProtocol.FT_FILE_END,
                 seq = nextSeq(),
@@ -168,9 +175,37 @@ class FileTransferManager(
         val meta = FileMetaJson.decodeStart(frame.payload)
         val staging = File(stagingDir, meta.id)
         staging.parentFile?.mkdirs()
-        activeReceive = ReceiveSession(meta, staging, FileOutputStream(staging, false))
+
+        // Decoupled pipeline: read loop enqueues chunks, a writer thread drains them to disk.
+        val queue = ArrayBlockingQueue<ByteArray>(QUEUE_CAPACITY)
+        val bufferedOut = BufferedOutputStream(FileOutputStream(staging, false), DISK_BUFFER_SIZE)
+        val session = ReceiveSession(meta, staging, bufferedOut, queue)
+        session.writerThread = Thread {
+            drainQueue(session)
+        }.apply { name = "blueself-disk-writer"; isDaemon = true; start() }
+
+        activeReceive = session
         updateProgress(meta.id, TransferDirection.RECEIVE, 0, meta.size)
         _fileStarts.emitSafely(meta)
+    }
+
+    /** Consumes the bounded queue and writes chunks to disk (independent of the BT read loop). */
+    private fun drainQueue(session: ReceiveSession) {
+        try {
+            while (true) {
+                val bytes = session.queue.poll(WRITER_POLL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                    ?: if (session.closed) break else continue
+                try {
+                    session.out.write(bytes)
+                } catch (e: Exception) {
+                    sendErr(session.meta.id, 1, "write failed: ${e.message}")
+                    session.writeError = e.message
+                    break
+                }
+            }
+        } catch (_: InterruptedException) {
+            // session closed; fall through
+        }
     }
 
     private fun onFileChunk(frame: MessageProtocol.Frame) {
@@ -179,10 +214,8 @@ class FileTransferManager(
         val session = activeReceive ?: return
         val bytes = payload.copyOfRange(4, payload.size)
         try {
-            session.out.write(bytes)
-        } catch (e: Exception) {
-            sendErr(session.meta.id, 1, "write failed: ${e.message}")
-            closeActiveReceive()
+            session.queue.put(bytes) // bounded; backpressure throttles the read loop if disk is slow
+        } catch (e: InterruptedException) {
             return
         }
         session.receivedBytes += bytes.size
@@ -192,8 +225,9 @@ class FileTransferManager(
             sendAck(session.meta.id, session.receivedBytes, false, false)
             session.lastAckTime = now
             session.sinceLastAck = 0
+            // Progress is emitted at the same ~10/s cadence as ACKs; not per chunk.
+            updateProgress(session.meta.id, TransferDirection.RECEIVE, session.receivedBytes, session.meta.size)
         }
-        updateProgress(session.meta.id, TransferDirection.RECEIVE, session.receivedBytes, session.meta.size)
     }
 
     private fun onFileEnd(frame: MessageProtocol.Frame) {
@@ -201,10 +235,14 @@ class FileTransferManager(
         val session = activeReceive ?: return
         if (session.meta.id != end.id) return
         activeReceive = null
+
+        // Stop the writer thread, flush everything still queued.
+        session.closed = true
+        session.writerThread?.join(WRITER_JOIN_TIMEOUT_MS)
         session.out.flush()
         session.out.close()
 
-        val md5Ok = verifyMd5(session.file, end.md5)
+        val md5Ok = if (session.writeError == null) verifyMd5(session.file, end.md5) else false
         sendAck(end.id, session.receivedBytes, true, md5Ok)
         updateProgress(end.id, TransferDirection.RECEIVE, session.receivedBytes, session.meta.size)
         _results.emitSafely(
@@ -213,7 +251,8 @@ class FileTransferManager(
                 success = md5Ok,
                 md5Match = md5Ok,
                 totalBytes = session.receivedBytes,
-                durationMs = System.currentTimeMillis() - session.receivedStartedAt
+                durationMs = System.currentTimeMillis() - session.receivedStartedAt,
+                error = session.writeError
             )
         )
         if (!md5Ok) {
@@ -237,7 +276,7 @@ class FileTransferManager(
     }
 
     private fun sendAck(fileId: String, ackedChunks: Long, ok: Boolean, md5Match: Boolean) {
-        writeFrame(
+        sendSingle(
             MessageProtocol.Frame(
                 type = MessageProtocol.FT_FILE_ACK,
                 seq = nextSeq(),
@@ -247,7 +286,7 @@ class FileTransferManager(
     }
 
     private fun sendErr(fileId: String, code: Int, msg: String) {
-        writeFrame(
+        sendSingle(
             MessageProtocol.Frame(
                 type = MessageProtocol.FT_ERR,
                 seq = nextSeq(),
@@ -256,10 +295,12 @@ class FileTransferManager(
         )
     }
 
-    /** Drops the current receive session and removes its partial staging file. */
+    /** Drops the current receive session, stops its writer, and removes partial staging. */
     private fun closeActiveReceive() {
         val session = activeReceive ?: return
         activeReceive = null
+        session.closed = true
+        runCatching { session.writerThread?.join(WRITER_JOIN_TIMEOUT_MS) }
         runCatching { session.out.close() }
         runCatching { session.file.delete() }
         _progress.value = _progress.value - session.meta.id
@@ -311,17 +352,25 @@ class FileTransferManager(
     private class ReceiveSession(
         val meta: FileStart,
         val file: File,
-        val out: FileOutputStream,
+        val out: BufferedOutputStream,
+        val queue: ArrayBlockingQueue<ByteArray>,
         val receivedStartedAt: Long = System.currentTimeMillis()
     ) {
         var receivedBytes: Long = 0
         var lastAckTime: Long = System.currentTimeMillis()
         var sinceLastAck: Int = 0
+        @Volatile var closed: Boolean = false
+        @Volatile var writeError: String? = null
+        @Volatile var writerThread: Thread? = null
     }
 
     private companion object {
         const val ACK_EVERY_CHUNKS = 8
         const val ACK_INTERVAL_MS = 1000L
+        const val QUEUE_CAPACITY = 32
+        const val DISK_BUFFER_SIZE = 256 * 1024
+        const val WRITER_POLL_TIMEOUT_MS = 200L
+        const val WRITER_JOIN_TIMEOUT_MS = 3000L
     }
 }
 

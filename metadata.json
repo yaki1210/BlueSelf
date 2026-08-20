@@ -1,6 +1,0 @@
-{
-  "name": "selftrans",
-  "description": "跨设备蓝牙极简文本传输工具，支持设备连接管理、剪贴板快速粘贴发送及收件箱。",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
