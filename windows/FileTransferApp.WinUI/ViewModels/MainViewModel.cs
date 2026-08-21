@@ -1,16 +1,21 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
+using System.IO;
 using System.Windows.Threading;
+using FileTransferApp.WinUI.Bluetooth;
+using FileTransferApp.WinUI.Bluetooth.Core;
 
 namespace FileTransferApp.WinUI.ViewModels;
 
 /// <summary>Device connection state shown by the status dot.</summary>
 public enum DeviceStatus { Online, Connecting, Offline }
 
-/// <summary>A paired device displayed in the device column.</summary>
+/// <summary>A Bluetooth device displayed in the device column.</summary>
 public sealed class DeviceItem : ObservableObject
 {
     public required string Name { get; init; }
     public required string SubLabel { get; init; }
+    public ulong Address { get; init; }
     private DeviceStatus _status;
     public DeviceStatus Status { get => _status; set => Set(ref _status, value); }
 }
@@ -21,6 +26,7 @@ public sealed class AttachmentItem : ObservableObject
     public required string Name { get; init; }
     public required string SizeText { get; init; }
     public required string Kind { get; init; } // pdf / image / file
+    public required string PathText { get; init; }
 }
 
 /// <summary>A log line shown in the collapsible log area.</summary>
@@ -41,37 +47,32 @@ public sealed class InboxEntry : ObservableObject
 }
 
 /// <summary>
-/// Main UI state for the stage-1 shell (no real Bluetooth/file logic).
-/// Provides a dispatcher-timer driven simulated transfer to preview the
-/// real-time status column and per-second rate display.
+/// Main UI state, wired to the real Bluetooth transfer pipeline.
+/// Listening is always on; picking a device connects to it; sending uses the
+/// live socket; inbound text/files surface in the inbox; progress feeds the
+/// third status column.
 /// </summary>
 public sealed class MainViewModel : ObservableObject
 {
-    private readonly DispatcherTimer _timer;
-    private readonly Random _rng = new();
-    private int _progressSteps;
-    private DateTime _transferStart;
+    private readonly SynchronizationContext _ui = SynchronizationContext.Current ?? new SynchronizationContext();
+    private readonly RfcommHost _host = new();
+    private readonly TransferService _transfer;
+    private long _lastBytes;
+    private DateTime _lastSample = DateTime.MinValue;
 
     public MainViewModel()
     {
-        _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        _timer.Tick += (_, _) => OnTick();
-
-        Devices.Add(new DeviceItem { Name = "Pixel 9a", SubLabel = "在线", Status = DeviceStatus.Online });
-        Devices.Add(new DeviceItem { Name = "小米 14", SubLabel = "离线", Status = DeviceStatus.Offline });
+        _transfer = new TransferService(SavePath);
+        WireTransferEvents();
+        LocalName = Environment.MachineName;
 
         Inbox.Add(new InboxEntry
         {
-            Device = "Pixel 9a", Time = "10:24", Preview = "照片已收到，请看下。",
-            FileInfo = "1 个文件", IsUnread = true
-        });
-        Inbox.Add(new InboxEntry
-        {
-            Device = "Pixel 9a", Time = "09:58", Preview = "好的，收到。",
-            FileInfo = "", IsUnread = false
+            Device = "系统", Time = "-", Preview = "等待接收消息。", FileInfo = "", IsUnread = false
         });
 
-        Log("已启动 · 界面预览（占位）");
+        Log("BlueSelf 已启动，正在开启蓝牙监听…");
+        _ = InitAsync();
     }
 
     private static MainViewModel? _instance;
@@ -97,57 +98,208 @@ public sealed class MainViewModel : ObservableObject
     public bool IsSettings => _currentView == AppView.Settings;
 
     public RelayCommandNoArg ShowWorkspaceCommand => new(() => CurrentView = AppView.Workspace);
-    public RelayCommandNoArg ShowInboxCommand => new(() => { CurrentView = AppView.Inbox; Log("打开收件箱（占位）"); });
-    public RelayCommandNoArg ShowSettingsCommand => new(() => { CurrentView = AppView.Settings; Log("打开设置（占位）"); });
+    public RelayCommandNoArg ShowInboxCommand => new(() => CurrentView = AppView.Inbox);
+    public RelayCommandNoArg ShowSettingsCommand => new(() => CurrentView = AppView.Settings);
 
-    // ---- Device column ----
+    // ---- Bluetooth init / device column ----
+    private async Task InitAsync()
+    {
+        try
+        {
+            var saveDir = SavePath;
+            Directory.CreateDirectory(Path.Combine(saveDir, "_staging"));
+            await _host.StartListeningAsync();
+            _host.IncomingConnected += socket => { _transfer.Attach(socket); Post(() => { IsListening = true; Log("有设备接入，连接已建立"); }); };
+            Post(() => Log("蓝牙监听已开启"));
+        }
+        catch (Exception ex)
+        {
+            Post(() => Log($"开启监听失败: {ex.Message}"));
+        }
+        await RefreshDevicesAsync();
+    }
+
+    private async Task RefreshDevicesAsync()
+    {
+        var devices = await Discovery.GetPairedDevicesAsync();
+        Post(() =>
+        {
+            Devices.Clear();
+            foreach (var d in devices)
+            {
+                Devices.Add(new DeviceItem
+                {
+                    Name = d.Name,
+                    SubLabel = "已配对",
+                    Address = d.Address,
+                    Status = d.Address == _selectedAddress ? DeviceStatus.Online : DeviceStatus.Offline
+                });
+            }
+            Log($"已发现 {Devices.Count} 台已配对设备");
+        });
+    }
+
+    private ulong _selectedAddress;
     public ObservableCollection<DeviceItem> Devices { get; } = new();
+
     private DeviceItem? _selectedDevice;
     public DeviceItem? SelectedDevice
     {
         get => _selectedDevice;
-        set { if (Set(ref _selectedDevice, value)) { OnPropertyChanged(nameof(HasSelectedDevice)); ShowTargetHint = false; } }
+        set
+        {
+            if (Set(ref _selectedDevice, value))
+            {
+                OnPropertyChanged(nameof(HasSelectedDevice));
+                ShowTargetHint = false;
+                if (_selectedDevice != null) _ = ConnectAsync(_selectedDevice);
+            }
+        }
     }
     public bool HasSelectedDevice => SelectedDevice != null;
-    public string LocalName { get; } = "BlueSelf-PC";
 
-    // 监听与发现默认开启、不提供开关（同手机版）
-    public bool IsListening { get; } = true;
+    private async Task ConnectAsync(DeviceItem device)
+    {
+        device.Status = DeviceStatus.Connecting;
+        Log($"正在连接 {device.Name}…");
+        try
+        {
+            var socket = await RfcommHost.ConnectAsync(device.Address);
+            _selectedAddress = device.Address;
+            _transfer.Attach(socket);
+            device.Status = DeviceStatus.Online;
+            Log($"已连接 {device.Name}");
+        }
+        catch (Exception ex)
+        {
+            device.Status = DeviceStatus.Offline;
+            Log($"连接 {device.Name} 失败: {ex.Message}（如未配对，请先在系统蓝牙设置中配对）");
+        }
+    }
 
-    // 未选择设备时点了发送，才显示目标提示（第 6 点）
+    public string LocalName { get; private set; }
+    private bool _isListening;
+    public bool IsListening { get => _isListening; set => Set(ref _isListening, value); }
+
+    // 未选择设备时点了发送，才显示目标提示
     private bool _showTargetHint;
     public bool ShowTargetHint { get => _showTargetHint; set => Set(ref _showTargetHint, value); }
 
-    public RelayCommandNoArg AddPairingCommand => new(() => Log("添加配对（占位）"));
+    public RelayCommandNoArg AddPairingCommand => new(() =>
+    {
+        Log("请在 Windows 设置 → 蓝牙与其他设备中完成配对");
+        _ = Process.Start("ms-settings:bluetooth");
+    });
 
     // ---- Composer ----
     private string _text = string.Empty;
     public string Text { get => _text; set => Set(ref _text, value); }
     public ObservableCollection<AttachmentItem> Attachments { get; } = new();
 
-    public RelayCommandNoArg PasteCommand => new(() => Log("粘贴（占位）"));
-    public RelayCommandNoArg AttachCommand => new(() => { AddSampleAttachment(); Log("添加附件（占位）"); });
-    public RelayCommandNoArg StartSendCommand => new(BeginTransfer);
-
-    private void AddSampleAttachment()
+    public RelayCommandNoArg PasteCommand => new(() =>
     {
-        if (Attachments.All(a => a.Name != "报告.pdf"))
+        var text = System.Windows.Clipboard.GetText();
+        if (!string.IsNullOrWhiteSpace(text))
         {
-            Attachments.Add(new AttachmentItem { Name = "报告.pdf", SizeText = "1.2 MB", Kind = "pdf" });
+            Text = string.IsNullOrWhiteSpace(Text) ? text : Text + text;
+            Log("已粘贴文本");
         }
-        if (Attachments.All(a => a.Name != "照片.png"))
+    });
+
+    public RelayCommandNoArg AttachCommand => new(SendAttach);
+
+    private void SendAttach()
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog { Multiselect = true, Title = "选择要发送的文件" };
+        if (dlg.ShowDialog() != true) return;
+        foreach (var file in dlg.FileNames)
         {
-            Attachments.Add(new AttachmentItem { Name = "照片.png", SizeText = "3.4 MB", Kind = "image" });
+            var fi = new FileInfo(file);
+            if (Attachments.All(a => a.PathText != fi.FullName))
+            {
+                Attachments.Add(new AttachmentItem
+                {
+                    Name = fi.Name,
+                    SizeText = FormatSize(fi.Length),
+                    Kind = KindOf(fi.Name),
+                    PathText = fi.FullName
+                });
+            }
+        }
+        Log($"已添加 {dlg.FileNames.Length} 个附件");
+    }
+
+    public RelayCommandNoArg StartSendCommand => new(StartTransfer);
+
+    private async void StartTransfer()
+    {
+        var device = SelectedDevice;
+        if (device == null)
+        {
+            ShowTargetHint = true; // 未选设备时点了发送 → 显示提示
+            Log("请先在设备栏选择目标设备");
+            return;
+        }
+        if (!_transfer.IsConnected)
+        {
+            Log("尚未建立连接，请稍候或重新选择目标设备");
+            return;
+        }
+        ShowTargetHint = false;
+        var hasText = !string.IsNullOrWhiteSpace(Text);
+        var hasFiles = Attachments.Count > 0;
+        if (!hasText && !hasFiles)
+        {
+            Log("没有可发送的内容");
+            return;
+        }
+        IsTransferring = true;
+        var sent = false;
+        try
+        {
+            if (hasText)
+            {
+                await _transfer.SendTextAsync(Text);
+                AddOutgoing(device.Name, Text, Attachments.Count);
+                sent = true;
+                Text = string.Empty;
+            }
+            foreach (var att in Attachments.ToList())
+            {
+                FileName = att.Name;
+                if (new FileInfo(att.PathText).Length > 20L * 1024 * 1024)
+                    Log("提示：此文件过大，蓝牙传输需较长时间");
+                await _transfer.SendFileAsync(att.PathText);
+                sent = true;
+            }
+            if (sent) Attachments.Clear();
+        }
+        catch (Exception ex)
+        {
+            Log($"发送失败: {ex.Message}");
+        }
+        finally
+        {
+            ResetTransferUi();
         }
     }
 
-    public RelayCommandNoArg AddLogCommand => new(() => Log("占位操作"));
-
-    /// <summary>Removes an attachment by name from the composer.</summary>
+    /// <summary>Removes an attachment by reference from the composer.</summary>
     public void RemoveAttachment(AttachmentItem item)
     {
         Attachments.Remove(item);
-        Log($"移除附件 {item.Name}");
+    }
+
+    private void AddOutgoing(string device, string preview, int fileCount)
+    {
+        Inbox.Insert(0, new InboxEntry
+        {
+            Device = device,
+            Time = DateTime.Now.ToString("HH:mm"),
+            Preview = preview,
+            FileInfo = fileCount > 0 ? $"{fileCount} 个文件" : "",
+            IsUnread = false
+        });
     }
 
     // ---- Inbox ----
@@ -177,12 +329,34 @@ public sealed class MainViewModel : ObservableObject
         get => _theme;
         set { if (Set(ref _theme, value)) App.ApplyTheme(value); }
     }
-    public string SavePath => @"%TEMP%\BlueSelf\received (占位路径)";
+    public string SavePath => SaveDir;
+
+    private static readonly string SaveDir = ResolveSaveDir();
+
+    private static string ResolveSaveDir()
+    {
+        var candidates = new[]
+        {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BlueSelf", "received"),
+            Path.Combine(Path.GetTempPath(), "BlueSelf", "received")
+        };
+        foreach (var dir in candidates)
+        {
+            try
+            {
+                Directory.CreateDirectory(dir);
+                Directory.CreateDirectory(Path.Combine(dir, "_staging"));
+                return dir;
+            }
+            catch { /* try next */ }
+        }
+        return Path.Combine(Path.GetTempPath(), "BlueSelf", "received");
+    }
 
     // ---- Transfer status (third column) ----
     private bool _isTransferring;
     public bool IsTransferring { get => _isTransferring; set => Set(ref _isTransferring, value); }
-    private string _fileName = "报告.pdf";
+    private string _fileName = "";
     public string FileName { get => _fileName; set => Set(ref _fileName, value); }
     private double _progress;
     public double Progress { get => _progress; set => Set(ref _progress, value); }
@@ -193,56 +367,108 @@ public sealed class MainViewModel : ObservableObject
     private string _avgMbps = "-";
     public string AvgMbps { get => _avgMbps; set => Set(ref _avgMbps, value); }
 
+    private void ResetTransferUi()
+    {
+        IsTransferring = false;
+        Progress = 0;
+        PercentText = "0%";
+        InstantRate = "0.0 KB/s";
+        AvgMbps = "-";
+        _lastBytes = 0;
+        _lastSample = DateTime.MinValue;
+    }
+
     // ---- Log ----
     public ObservableCollection<LogEntry> Logs { get; } = new();
-    public bool IsLogExpanded { get; set; }
 
     public void Log(string message)
     {
         Logs.Add(new LogEntry { Time = DateTime.Now.ToString("HH:mm:ss"), Message = message });
     }
 
-    private void BeginTransfer()
+    // ---- Transfer event wiring ----
+    private void WireTransferEvents()
     {
-        if (SelectedDevice == null)
-        {
-            ShowTargetHint = true; // 未选设备时点了发送 → 显示提示（第 6 点）
-            Log("请先在设备栏选择目标设备（占位）");
-            return;
-        }
-        ShowTargetHint = false;
-        IsTransferring = true;
-        Progress = 0;
-        _progressSteps = 0;
-        _transferStart = DateTime.Now;
-        PercentText = "0%";
-        InstantRate = "0.0 KB/s";
-        AvgMbps = "-";
-        FileName = Attachments.FirstOrDefault()?.Name ?? "sample.bin";
-        Log($"开始发送 {FileName} → {SelectedDevice.Name}（占位模拟）");
-        _timer.Start();
+        _transfer.TextReceived += content =>
+            Post(() => AddInbound("接收文本", content));
+
+        _transfer.FileReceived += file =>
+            Post(() => AddInbound("接收文件", $"收到文件 {file.Name}（{FormatSize(file.Size)}） → {file.SavePath}", needFileInfo: true));
+
+        _transfer.Progress += p => Post(() => ApplyProgress(p));
+
+        _transfer.Info += msg => Post(() => Log(msg));
+        _transfer.LogError += msg => Post(() => Log(msg));
+        _transfer.Disconnected += () => Post(() => Log("连接已断开"));
     }
 
-    private void OnTick()
+    private void AddInbound(string device, string preview, bool needFileInfo = false, string? deviceName = null)
     {
-        _progressSteps++;
-        var incr = _rng.Next(9, 20);
-        Progress = Math.Min(100, Progress + incr);
-        PercentText = $"{Progress:0}%";
-
-        var kbPerSec = _rng.Next(95, 141);
-        InstantRate = $"{kbPerSec:0.0} KB/s";
-        AvgMbps = $"{kbPerSec * 8.0 / 1000.0:0.00} Mbps";
-
-        if (Progress >= 100)
+        Inbox.Insert(0, new InboxEntry
         {
-            _timer.Stop();
-            IsTransferring = false;
-            Progress = 0;
-            PercentText = "0%";
-            InstantRate = "0.0 KB/s";
-            AvgMbps = "-";
-            Log($"传输完成 {FileName}（占位）");
+            Device = deviceName ?? device,
+            Time = DateTime.Now.ToString("HH:mm"),
+            Preview = preview,
+            FileInfo = needFileInfo ? "1 个文件" : "",
+            IsUnread = true
+        });
+    }
+
+    private void ApplyProgress(TransferProgress p)
+    {
+        if (!IsTransferring)
+        {
+            IsTransferring = true;
+            _lastBytes = 0;
+            _lastSample = DateTime.UtcNow;
         }
+        Progress = p.Fraction * 100.0;
+        PercentText = $"{(int)Math.Round(p.Fraction * 100)}%";
+
+        var now = DateTime.UtcNow;
+        if (_lastSample == DateTime.MinValue) { _lastSample = now; _lastBytes = p.BytesDone; }
+        if (p.BytesDone >= _lastBytes && (now - _lastSample).TotalSeconds >= 0.8)
+        {
+            var elapsed = (now - _lastSample).TotalSeconds;
+            var bytesDelta = p.BytesDone - _lastBytes;
+            InstantRate = FormatBytes((long)(bytesDelta / elapsed)) + "/s";
+            _lastSample = now;
+            _lastBytes = p.BytesDone;
+        }
+        if (p.ElapsedMs > 0)
+        {
+            AvgMbps = $"{(p.BytesDone * 8.0 / 1_000_000.0) / (p.ElapsedMs / 1000.0):0.00} Mbps";
+        }
+    }
+
+    private void Post(Action action)
+    {
+        if (_ui != null && _ui != SynchronizationContext.Current)
+            _ui.Post(_ => action(), null);
+        else
+            action();
+    }
+
+    // ---- Formatting helpers ----
+    public static string FormatBytes(long bytes) => bytes switch
+    {
+        < 1024 => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024.0:0.#} KB",
+        < 1024L * 1024 * 1024 => $"{bytes / 1024.0 / 1024.0:0.#} MB",
+        _ => $"{bytes / 1024.0 / 1024.0 / 1024.0:0.##} GB"
+    };
+
+    private static string FormatSize(long bytes) => FormatBytes(bytes);
+
+    private static string KindOf(string name)
+    {
+        var ext = Path.GetExtension(name).ToLowerInvariant();
+        return ext switch
+        {
+            ".pdf" => "pdf",
+            ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" => "image",
+            ".txt" or ".md" => "text",
+            _ => "file"
+        };
     }
 }
