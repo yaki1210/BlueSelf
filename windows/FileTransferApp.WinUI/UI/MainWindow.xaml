@@ -29,10 +29,11 @@
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
-                <!-- 左侧：品牌 Logo + 名称（Android 应用图标） -->
+                <!-- 左侧：品牌 Logo + 名称 -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Border Width="32" Height="32" CornerRadius="8" Background="#F3F7FC" Margin="0,0,10,0">
-                        <Image Source="/Resources/ic_launcher.png" Stretch="UniformToFill" />
+                    <Border Width="32" Height="32" CornerRadius="8" Background="{DynamicResource BrandBrush}" Margin="0,0,10,0">
+                        <TextBlock Text="&#xE702;" FontFamily="{StaticResource IconFont}" FontSize="16"
+                                   Foreground="#FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
                     <TextBlock Text="BlueSelf" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource BrandTextBrush}"
                                VerticalAlignment="Center" />

@@ -11,26 +11,26 @@
     <SolidColorBrush x:Key="BrandLightBrush" Color="#EEEDFC" />
     <SolidColorBrush x:Key="BrandTextBrush" Color="#1E1B4B" />
 
-    <SolidColorBrush x:Key="WindowBgBrush" Color="#F4F5F8" />
+    <SolidColorBrush x:Key="WindowBgBrush" Color="#E8EBF0" />
     <SolidColorBrush x:Key="CardBgBrush" Color="#FFFFFF" />
-    <SolidColorBrush x:Key="SidebarBgBrush" Color="#F8F9FB" />
-    <SolidColorBrush x:Key="SurfaceBrush" Color="#F7F7F9" />
-    <SolidColorBrush x:Key="SurfaceAltBrush" Color="#EFEFF4" />
-    <SolidColorBrush x:Key="NavBgBrush" Color="#E4E5EC" />
+    <SolidColorBrush x:Key="SidebarBgBrush" Color="#F0F2F6" />
+    <SolidColorBrush x:Key="SurfaceBrush" Color="#F4F6FA" />
+    <SolidColorBrush x:Key="SurfaceAltBrush" Color="#E5E9F0" />
+    <SolidColorBrush x:Key="NavBgBrush" Color="#DFE3EB" />
 
-    <SolidColorBrush x:Key="BorderBrush" Color="#CFCFD9" />
-    <SolidColorBrush x:Key="BorderSubtleBrush" Color="#DCDCE6" />
+    <SolidColorBrush x:Key="BorderBrush" Color="#B9C0CC" />
+    <SolidColorBrush x:Key="BorderSubtleBrush" Color="#D2D7E0" />
 
-    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#18181B" />
-    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#52525B" />
-    <SolidColorBrush x:Key="TextMutedBrush" Color="#8E8E9A" />
-    <SolidColorBrush x:Key="TextDisabledBrush" Color="#A1A1AA" />
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#0E1013" />
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#3E4450" />
+    <SolidColorBrush x:Key="TextMutedBrush" Color="#666D7C" />
+    <SolidColorBrush x:Key="TextDisabledBrush" Color="#9098A5" />
 
-    <SolidColorBrush x:Key="OnlineBrush" Color="#10B981" />
-    <SolidColorBrush x:Key="OnlineLightBrush" Color="#D1FAE5" />
-    <SolidColorBrush x:Key="ConnectingBrush" Color="#F59E0B" />
-    <SolidColorBrush x:Key="OfflineBrush" Color="#9CA3AF" />
-    <SolidColorBrush x:Key="DangerBrush" Color="#EF4444" />
-    <SolidColorBrush x:Key="DangerLightBrush" Color="#FEE2E2" />
+    <SolidColorBrush x:Key="OnlineBrush" Color="#0EA971" />
+    <SolidColorBrush x:Key="OnlineLightBrush" Color="#DDF7E9" />
+    <SolidColorBrush x:Key="ConnectingBrush" Color="#E08E00" />
+    <SolidColorBrush x:Key="OfflineBrush" Color="#8C93A0" />
+    <SolidColorBrush x:Key="DangerBrush" Color="#E2392B" />
+    <SolidColorBrush x:Key="DangerLightBrush" Color="#FDE3E0" />
 
 </ResourceDictionary>
