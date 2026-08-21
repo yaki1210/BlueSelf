@@ -130,13 +130,34 @@ public sealed class MainViewModel : ObservableObject
 
     public MainViewModel()
     {
+        // 加载持久化设置（语言/主题/保存目录），覆盖内存默认值。
+        var settings = AppSettingsStore.Load();
+        _language = ValidateChoice(Languages, settings.Language, "中文");
+        _theme = ValidateChoice(Themes, settings.Theme, "跟随系统");
+        if (!string.IsNullOrWhiteSpace(settings.SavePath))
+        {
+            try
+            {
+                Directory.CreateDirectory(settings.SavePath);
+                Directory.CreateDirectory(Path.Combine(settings.SavePath, "_staging"));
+                _savePath = settings.SavePath;
+            }
+            catch { /* ignore invalid saved path */ }
+        }
+
         _transfer = new TransferService(SavePath);
         WireTransferEvents();
         LocalName = TransferService.LocalDeviceName();
 
         Log("BlueSelf 已启动，正在开启蓝牙监听…");
+        SaveSettings(); // 先落盘，确保设置即时持久化
+        App.ApplyLanguage(_language);
+        App.ApplyTheme(_theme);
         _ = InitAsync();
     }
+
+    private static string ValidateChoice(IEnumerable<string> allowed, string value, string fallback)
+        => allowed.Contains(value) ? value : fallback;
 
     private static MainViewModel? _instance;
     public static MainViewModel Instance => _instance ??= new MainViewModel();
@@ -841,15 +862,16 @@ public sealed class MainViewModel : ObservableObject
     public string Language
     {
         get => _language;
-        set { if (Set(ref _language, value)) App.ApplyLanguage(value); }
+        set { if (Set(ref _language, value)) { App.ApplyLanguage(value); SaveSettings(); } }
     }
     public string[] Themes { get; } = { "跟随系统", "亮色", "暗色" };
     private string _theme = "跟随系统";
     public string Theme
     {
         get => _theme;
-        set { if (Set(ref _theme, value)) App.ApplyTheme(value); }
+        set { if (Set(ref _theme, value)) { App.ApplyTheme(value); SaveSettings(); } }
     }
+    private void SaveSettings() => AppSettingsStore.Save(_language, _theme, _savePath);
     private string _savePath = ResolveSaveDir();
     public string SavePath
     {
@@ -866,6 +888,7 @@ public sealed class MainViewModel : ObservableObject
                 }
                 catch { }
                 _transfer.SaveDir = value;
+                SaveSettings();
             }
         }
     }
