@@ -325,13 +325,30 @@ public sealed class MainViewModel : ObservableObject
                 OnPropertyChanged(nameof(HasSelectedDevice));
                 OnPropertyChanged(nameof(IsTargetRowVisible));
                 ShowTargetHint = false;
-                if (_selectedDevice != null) _ = ConnectAsync(_selectedDevice);
             }
         }
     }
     public bool HasSelectedDevice => SelectedDevice != null;
     /// <summary>True when the target-device row should be shown (a device is selected and no hint is visible).</summary>
     public bool IsTargetRowVisible => SelectedDevice != null && !ShowTargetHint;
+
+    /// <summary>Clicking a device: select it as target and (re)connect. Fires on every click,
+    /// so the same device can be clicked again to retry regardless of the last result.</summary>
+    public RelayCommand ConnectDeviceCommand => new(p =>
+    {
+        if (p is DeviceItem d) _ = ConnectDeviceAsync(d);
+    });
+
+    private async Task ConnectDeviceAsync(DeviceItem device)
+    {
+        _selectedDevice = device;
+        _selectedAddress = device.Address;
+        _peerName = device.Name;
+        OnPropertyChanged(nameof(SelectedDevice));
+        OnPropertyChanged(nameof(HasSelectedDevice));
+        OnPropertyChanged(nameof(IsTargetRowVisible));
+        await ConnectAsync(device);
+    }
 
     private async Task ConnectAsync(DeviceItem device)
     {
@@ -833,9 +850,45 @@ public sealed class MainViewModel : ObservableObject
         get => _theme;
         set { if (Set(ref _theme, value)) App.ApplyTheme(value); }
     }
-    public string SavePath => SaveDir;
+    private string _savePath = ResolveSaveDir();
+    public string SavePath
+    {
+        get => _savePath;
+        set
+        {
+            if (string.IsNullOrWhiteSpace(value)) return;
+            if (Set(ref _savePath, value))
+            {
+                try
+                {
+                    Directory.CreateDirectory(value);
+                    Directory.CreateDirectory(Path.Combine(value, "_staging"));
+                }
+                catch { }
+                _transfer.SaveDir = value;
+            }
+        }
+    }
 
-    private static readonly string SaveDir = ResolveSaveDir();
+    /// <summary>Opens a folder picker to change the received-files save directory.</summary>
+    public RelayCommandNoArg ChangeSavePathCommand => new(ChangeSavePath);
+
+    private void ChangeSavePath()
+    {
+        try
+        {
+            var dlg = new Microsoft.Win32.OpenFolderDialog { Title = "选择接收文件保存目录" };
+            if (dlg.ShowDialog() != true) return;
+            var folder = dlg.FolderName;
+            if (string.IsNullOrWhiteSpace(folder)) return;
+            SavePath = folder;
+            Log($"接收文件保存目录已更改为: {folder}");
+        }
+        catch (Exception ex)
+        {
+            Log($"更改保存目录失败: {ex.Message}");
+        }
+    }
 
     private static string ResolveSaveDir()
     {

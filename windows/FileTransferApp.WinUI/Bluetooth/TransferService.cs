@@ -56,7 +56,7 @@ public sealed class TransferService : IDisposable
         SaveDir = saveDir;
     }
 
-    public string SaveDir { get; }
+    public string SaveDir { get; set; }
     public bool IsConnected => _socket != null;
 
     /// <summary>

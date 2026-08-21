@@ -86,6 +86,7 @@
                                        TextTrimming="CharacterEllipsis" Margin="0,2,0,0" />
                         </StackPanel>
                         <Button Grid.Column="2" Style="{StaticResource SecondaryButton}"
+                                Command="{Binding ChangeSavePathCommand}"
                                 Content="{DynamicResource stChange}" VerticalAlignment="Center" />
                     </Grid>
                 </Border>

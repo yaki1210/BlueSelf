@@ -41,15 +41,21 @@
                     </StackPanel>
                 </Grid>
 
-                <!-- 设备列表 -->
-                <ListBox Grid.Row="1" ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice}"
+                <!-- 设备列表：点击整行即（重）连接，状态由圆点颜色表达，无持久选中框 -->
+                <ListBox Grid.Row="1" ItemsSource="{Binding Devices}"
                          ItemContainerStyle="{StaticResource FluentListBoxItem}"
                          Background="Transparent" BorderThickness="0"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                          ScrollViewer.VerticalScrollBarVisibility="Auto">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <controls:DeviceListItem />
+                            <Button Command="{Binding DataContext.ConnectDeviceCommand, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"
+                                    CommandParameter="{Binding}"
+                                    Background="Transparent" BorderThickness="0" Padding="0"
+                                    HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center"
+                                    Cursor="Hand" ToolTip="点击连接此设备">
+                                <controls:DeviceListItem />
+                            </Button>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
