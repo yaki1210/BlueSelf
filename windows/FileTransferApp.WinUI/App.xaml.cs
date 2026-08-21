@@ -4,23 +4,24 @@ namespace FileTransferApp.WinUI;
 
 public partial class App : Application
 {
+    private const string ThemeMarker = "__ThemeMarker";
+    private const string LangMarker = "__LangMarker";
+
     /// <summary>
-    /// Switches the UI theme by swapping the theme resource dictionary (Light/Dark/System).
+    /// Switches the UI theme by replacing the theme resource dictionary
+    /// (Light / Dark / follow system).
     /// </summary>
     public static void ApplyTheme(string theme)
     {
-        const string marker = "/Themes/";
-        var mds = Current.Resources.MergedDictionaries;
-        // 跟随系统：根据系统浅色/深色偏好选择对应主题
         var effective = theme switch
         {
             "暗色" => "Dark",
             "跟随系统" => GetSystemDarkMode() ? "Dark" : "Light",
             _ => "Light"
         };
-        var source = $"Resources/Themes/{effective}.xaml";
-        var uri = new Uri(source, UriKind.Relative);
-        SwapDictionary(mds, marker, uri);
+        SwapDictionary(
+            markerKey: ThemeMarker,
+            source: $"Resources/Themes/{effective}.xaml");
     }
 
     /// <summary>Detects whether the OS is in dark mode via the registry.</summary>
@@ -39,33 +40,37 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// Switches the UI language by swapping the strings resource dictionary (中文/English).
+    /// Switches the UI language by replacing the strings resource dictionary
+    /// (中文 / English).
     /// </summary>
     public static void ApplyLanguage(string language)
     {
-        const string marker = "/Strings/";
-        var mds = Current.Resources.MergedDictionaries;
-        var source = language == "English" ? "Resources/Strings/En.xaml" : "Resources/Strings/Zh.xaml";
-        var uri = new Uri(source, UriKind.Relative);
-        SwapDictionary(mds, marker, uri);
+        SwapDictionary(
+            markerKey: LangMarker,
+            source: language == "English" ? "Resources/Strings/En.xaml" : "Resources/Strings/Zh.xaml");
     }
 
-    private static void SwapDictionary(
-        System.Collections.ObjectModel.Collection<ResourceDictionary> mds, string marker, Uri newSource)
+    /// <summary>
+    /// Locates the merged dictionary that carries <paramref name="markerKey"/>
+    /// (a sentinel any of our theme/string dictionaries defines) and replaces it with
+    /// a freshly loaded dictionary, so DynamicResource consumers update live.
+    /// </summary>
+    private static void SwapDictionary(string markerKey, string source)
     {
+        var mds = Current.Resources.MergedDictionaries;
+
         var index = -1;
         for (var i = 0; i < mds.Count; i++)
         {
-            var dir = mds[i];
-            var src = dir.Source?.ToString() ?? string.Empty;
-            if (src.Contains(marker))
+            if (mds[i].Contains(markerKey))
             {
                 index = i;
                 mds.RemoveAt(i);
                 break;
             }
         }
-        var merged = new ResourceDictionary { Source = newSource };
+
+        var merged = new ResourceDictionary { Source = new Uri(source, UriKind.Relative) };
         if (index >= 0)
         {
             mds.Insert(index, merged);

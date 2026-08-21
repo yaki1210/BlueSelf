@@ -2,6 +2,8 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:s="clr-namespace:System;assembly=mscorlib">
 
+    <s:String x:Key="__LangMarker">En</s:String>
+
     <s:String x:Key="navWorkspace">Workspace</s:String>
     <s:String x:Key="navInbox">Inbox</s:String>
     <s:String x:Key="navSettings">Settings</s:String>

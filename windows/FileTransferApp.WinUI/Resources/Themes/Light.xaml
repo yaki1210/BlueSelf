@@ -1,5 +1,9 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:s="clr-namespace:System;assembly=mscorlib">
+
+    <!-- 哨兵键：用于在运行时定位主题字典（不依赖 Source 路径） -->
+    <s:String x:Key="__ThemeMarker">Light</s:String>
 
     <!-- 浅色主题 -->
     <SolidColorBrush x:Key="BrandBrush" Color="#4B3FE3" />
