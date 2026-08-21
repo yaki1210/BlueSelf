@@ -69,3 +69,57 @@ public sealed class EmptyTextToVisibilityConverter : IValueConverter
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         => throw new NotSupportedException();
 }
+
+/// <summary>Converts null to Collapsed and non-null to Visible.</summary>
+public sealed class NullToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        => value != null ? Visibility.Visible : Visibility.Collapsed;
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>Converts null to Visible and non-null to Collapsed.</summary>
+public sealed class InverseNullToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        => value == null ? Visibility.Visible : Visibility.Collapsed;
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>Converts kind string to a subtle background brush for chips.</summary>
+public sealed class KindToBgBrushConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        => value is string kind
+            ? kind switch
+            {
+                "pdf" => new SolidColorBrush(Color.FromArgb(30, 239, 68, 68)),    // Red tint
+                "image" => new SolidColorBrush(Color.FromArgb(30, 16, 185, 129)), // Green tint
+                _ => new SolidColorBrush(Color.FromArgb(30, 75, 63, 227)),        // Purple tint
+            }
+            : new SolidColorBrush(Color.FromArgb(20, 0, 0, 0));
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>Converts kind string to an accent foreground brush.</summary>
+public sealed class KindToFgBrushConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        => value is string kind
+            ? kind switch
+            {
+                "pdf" => new SolidColorBrush(Color.FromRgb(220, 38, 38)),
+                "image" => new SolidColorBrush(Color.FromRgb(5, 150, 105)),
+                _ => new SolidColorBrush(Color.FromRgb(75, 63, 227)),
+            }
+            : new SolidColorBrush(Color.FromRgb(100, 100, 100));
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}

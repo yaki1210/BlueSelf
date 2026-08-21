@@ -3,12 +3,15 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:converters="clr-namespace:FileTransferApp.WinUI.UI">
     <UserControl.Resources>
-        <converters:BoolToVisibilityConverter x:Key="Bean" />
+        <converters:BoolToVisibilityConverter x:Key="BoolToVis" />
+        <converters:NullToVisibilityConverter x:Key="NullToVis" />
+        <converters:InverseNullToVisibilityConverter x:Key="InvNullToVis" />
+        
         <!-- 未读红点 -->
         <Style x:Key="UnreadDot" TargetType="Ellipse">
-            <Setter Property="Width" Value="9" />
-            <Setter Property="Height" Value="9" />
-            <Setter Property="Fill" Value="#E8463A" />
+            <Setter Property="Width" Value="8" />
+            <Setter Property="Height" Value="8" />
+            <Setter Property="Fill" Value="{DynamicResource DangerBrush}" />
             <Setter Property="Visibility" Value="Visible" />
             <Style.Triggers>
                 <DataTrigger Binding="{Binding IsUnread}" Value="False">
@@ -17,54 +20,179 @@
             </Style.Triggers>
         </Style>
     </UserControl.Resources>
-    <Grid Margin="18,12,18,10">
+    
+    <Grid Margin="20,16,20,16">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="14" />
+            <!-- 左：消息列表 (320px) -->
+            <ColumnDefinition Width="320" />
+            <!-- 右：消息详情 (剩余空间) -->
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
-        <!-- 左：消息列表 -->
-        <Border Grid.Column="0" Background="#EFEFF2" CornerRadius="12" Padding="8">
-            <ListBox ItemsSource="{Binding Inbox}" SelectedItem="{Binding SelectedInbox}"
-                     Background="Transparent" BorderThickness="0">
-                <ListBox.ItemTemplate>
-                    <DataTemplate>
-                        <Border CornerRadius="10" Padding="12,10" Margin="0,0,0,6" Background="#F7F7F8">
-                            <StackPanel>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="{Binding Device}" FontWeight="SemiBold" Foreground="#171717" />
-                                    <Ellipse Style="{StaticResource UnreadDot}" Margin="8,0,0,0"
-                                             VerticalAlignment="Center" />
-                                </StackPanel>
-                                <TextBlock Text="{Binding Preview}" FontSize="13" Foreground="#52525B"
-                                           TextTrimming="CharacterEllipsis" Margin="0,3,0,0" />
-                                <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
-                                    <TextBlock Text="{Binding Time}" FontSize="11" Foreground="Gray" />
-                                    <TextBlock Text="{Binding FileInfo}" FontSize="11" Foreground="#4B3FE3"
-                                               Margin="8,0,0,0" />
-                                </StackPanel>
-                            </StackPanel>
+        <!-- 左侧：消息列表卡片 -->
+        <Border Grid.Column="0" Background="{DynamicResource CardBgBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                CornerRadius="14" Padding="14" Margin="0,0,14,0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- 列表顶部标题栏 -->
+                <Grid Grid.Row="0" Margin="2,0,2,12">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="{DynamicResource inTitle}" FontSize="14" FontWeight="Bold"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                        <Border Background="{DynamicResource BrandLightBrush}" CornerRadius="10" Padding="8,2" Margin="8,0,0,0">
+                            <TextBlock Text="{Binding Inbox.Count, StringFormat='{}{0} 条记录'}" FontSize="11"
+                                       Foreground="{DynamicResource BrandBrush}" FontWeight="SemiBold" />
                         </Border>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
+                    </StackPanel>
+                </Grid>
+
+                <!-- 消息列表 -->
+                <ListBox Grid.Row="1" ItemsSource="{Binding Inbox}" SelectedItem="{Binding SelectedInbox}"
+                         ItemContainerStyle="{DynamicResource FluentListBoxItem}"
+                         Background="Transparent" BorderThickness="0"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Border Padding="10,8">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- 发送设备头像 -->
+                                    <Border Grid.Column="0" Width="36" Height="36" CornerRadius="8"
+                                            Background="{DynamicResource SurfaceAltBrush}" Margin="0,0,10,0" VerticalAlignment="Top">
+                                        <TextBlock Text="&#xE8EA;" FontFamily="{DynamicResource IconFont}" FontSize="16"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <Grid>
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Device}" FontWeight="Bold" FontSize="13"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                <Ellipse Style="{DynamicResource UnreadDot}" Margin="6,0,0,0"
+                                                         VerticalAlignment="Center" />
+                                            </StackPanel>
+                                            <TextBlock Text="{Binding Time}" FontSize="11" Foreground="{DynamicResource TextMutedBrush}"
+                                                       HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                        </Grid>
+
+                                        <TextBlock Text="{Binding Preview}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   TextTrimming="CharacterEllipsis" Margin="0,3,0,4" />
+
+                                        <!-- 附件提示徽标（如果有） -->
+                                        <Border HorizontalAlignment="Left" Background="{DynamicResource BrandLightBrush}"
+                                                CornerRadius="4" Padding="6,1" Margin="0,0,0,0">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="&#xE723;" FontFamily="{DynamicResource IconFont}" FontSize="10"
+                                                           Foreground="{DynamicResource BrandBrush}" Margin="0,0,4,0" VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding FileInfo}" FontSize="10" FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource BrandBrush}" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Border>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Grid>
         </Border>
 
-        <!-- 右：详情 -->
-        <Border Grid.Column="2" Background="#F7F7F8" CornerRadius="12" Padding="18">
-            <StackPanel>
-                <TextBlock Text="消息详情" FontSize="15" FontWeight="SemiBold" Foreground="#171717" />
-                <TextBlock Text="{Binding DetailDevice}" FontSize="14" Foreground="#52525B" Margin="0,10,0,0" />
-                <TextBlock Text="{Binding DetailTime}" FontSize="12" Foreground="Gray" Margin="0,2,0,0" />
-                <Border Background="#FFFFFF" CornerRadius="10" Padding="12" Margin="0,14,0,0"
-                        BorderBrush="#33000000" BorderThickness="1">
-                    <TextBlock Text="{Binding DetailPreview}" FontSize="14" Foreground="#171717"
-                               TextWrapping="Wrap" />
-                </Border>
-                <TextBlock Text="附件" FontSize="13" FontWeight="SemiBold" Foreground="#171717" Margin="0,16,0,4" />
-                <TextBlock Text="（占位：无附件数据）" FontSize="12" Foreground="Gray" Opacity="0.7" />
-            </StackPanel>
+        <!-- 右侧：详情查看面板 -->
+        <Border Grid.Column="1" Background="{DynamicResource CardBgBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                CornerRadius="14" Padding="22">
+            <Grid>
+                <!-- 未选中任何消息的空状态 -->
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
+                            Visibility="{Binding SelectedInbox, Converter={StaticResource InvNullToVis}}">
+                    <Border Width="56" Height="56" CornerRadius="28" Background="{DynamicResource SurfaceAltBrush}"
+                            HorizontalAlignment="Center" Margin="0,0,0,12">
+                        <TextBlock Text="&#xE715;" FontFamily="{DynamicResource IconFont}" FontSize="24"
+                                   Foreground="{DynamicResource TextMutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <TextBlock Text="{DynamicResource inEmpty}" FontSize="14" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Center" />
+                    <TextBlock Text="{DynamicResource inEmptySub}" FontSize="12"
+                               Foreground="{DynamicResource TextMutedBrush}" Margin="0,4,0,0" HorizontalAlignment="Center" />
+                </StackPanel>
+
+                <!-- 已选中消息的内容展示 -->
+                <Grid Visibility="{Binding SelectedInbox, Converter={StaticResource NullToVis}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- 消息头部元信息 -->
+                    <Border Grid.Row="0" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,0,0,1"
+                            Padding="0,0,0,16" Margin="0,0,0,16">
+                        <Grid>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Border Width="40" Height="40" CornerRadius="10" Background="{DynamicResource BrandLightBrush}" Margin="0,0,12,0">
+                                    <TextBlock Text="&#xE8EA;" FontFamily="{DynamicResource IconFont}" FontSize="18"
+                                               Foreground="{DynamicResource BrandBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding DetailDevice}" FontSize="16" FontWeight="Bold"
+                                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                                    <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                        <TextBlock Text="{DynamicResource inRecvTime}" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" />
+                                        <TextBlock Text="{Binding DetailTime}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" FontWeight="Medium" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- 消息正文气泡卡片 -->
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel>
+                            <TextBlock Text="{DynamicResource inBody}" FontSize="12" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextMutedBrush}" Margin="0,0,0,8" />
+                            <Border Background="{DynamicResource SidebarBgBrush}"
+                                    BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1"
+                                    CornerRadius="10" Padding="16">
+                                <TextBlock Text="{Binding DetailPreview}" FontSize="14" LineHeight="22"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- 关联附件区域 -->
+                    <Border Grid.Row="2" Margin="0,16,0,0" BorderBrush="{DynamicResource BorderSubtleBrush}"
+                            BorderThickness="0,1,0,0" Padding="0,14,0,0">
+                        <StackPanel>
+                            <TextBlock Text="{DynamicResource inFiles}" FontSize="12" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextMutedBrush}" Margin="0,0,0,8" />
+                            <Border Background="{DynamicResource SurfaceBrush}"
+                                    BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1"
+                                    CornerRadius="8" Padding="12,10">
+                                <Grid>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="&#xE8A5;" FontFamily="{DynamicResource IconFont}" FontSize="16"
+                                                   Foreground="{DynamicResource BrandBrush}" Margin="0,0,8,0" VerticalAlignment="Center" />
+                                        <TextBlock Text="{DynamicResource inSynced}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                    <Button Style="{DynamicResource SecondaryButton}" Content="{DynamicResource inOpenDir}"
+                                            HorizontalAlignment="Right" Height="30" FontSize="11" Padding="10,0" />
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Grid>
         </Border>
     </Grid>
 </UserControl>

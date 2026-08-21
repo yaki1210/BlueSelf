@@ -5,15 +5,33 @@
     <UserControl.Resources>
         <converters:StatusToBrushConverter x:Key="StatusToBrush" />
     </UserControl.Resources>
-    <Border CornerRadius="10" Background="Transparent" Padding="10,8">
-        <StackPanel>
-            <StackPanel Orientation="Horizontal">
-                <Ellipse Width="9" Height="9" VerticalAlignment="Center"
-                         Fill="{Binding Status, Converter={StaticResource StatusToBrush}}" />
-                <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" Foreground="#171717"
-                           Margin="8,0,0,0" />
+    <Border CornerRadius="8" Background="Transparent" Padding="10,8">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <!-- 设备图标 -->
+            <Border Grid.Column="0" Width="32" Height="32" CornerRadius="8"
+                    Background="{DynamicResource SurfaceAltBrush}" Margin="0,0,10,0">
+                <TextBlock Text="&#xE8EA;" FontFamily="{DynamicResource IconFont}" FontSize="15"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+
+            <!-- 设备名称及状态描述 -->
+            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="{Binding SubLabel}" FontSize="11" Foreground="{DynamicResource TextMutedBrush}"
+                           Margin="0,1,0,0" />
             </StackPanel>
-            <TextBlock Text="{Binding SubLabel}" FontSize="11" Foreground="Gray" Margin="17,2,0,0" />
-        </StackPanel>
+
+            <!-- 状态圆点 -->
+            <Ellipse Grid.Column="2" Width="8" Height="8" VerticalAlignment="Center" Margin="6,0,2,0"
+                     Fill="{Binding Status, Converter={StaticResource StatusToBrush}}" />
+        </Grid>
     </Border>
 </UserControl>

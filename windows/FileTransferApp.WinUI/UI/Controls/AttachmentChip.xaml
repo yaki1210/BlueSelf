@@ -4,28 +4,59 @@
              xmlns:converters="clr-namespace:FileTransferApp.WinUI.UI">
     <UserControl.Resources>
         <converters:KindToGlyphConverter x:Key="KindToGlyph" />
+        <converters:KindToBgBrushConverter x:Key="KindToBgBrush" />
+        <converters:KindToFgBrushConverter x:Key="KindToFgBrush" />
     </UserControl.Resources>
-    <Border Width="116" Height="64" CornerRadius="12" Background="#22F0F0F4"
-            BorderBrush="#33000000" BorderThickness="1" Margin="0,0,8,0">
-        <Grid Margin="0">
-            <!-- 打底的图标 -->
-            <TextBlock Text="{Binding Kind, Converter={StaticResource KindToGlyph}}"
-                       FontFamily="Segoe MDL2 Assets" FontSize="40"
-                       Foreground="#2A4B3FE3" VerticalAlignment="Center" HorizontalAlignment="Center" />
-            <!-- 文件信息 -->
-            <StackPanel VerticalAlignment="Center" Margin="10,0,26,0">
-                <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
-                           Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
-                           TextTrimming="CharacterEllipsis" MaxWidth="76" />
-                <TextBlock Text="{Binding SizeText}" FontSize="11" Foreground="Gray" Margin="0,1,0,0" />
+    <Border Height="44" MinWidth="130" MaxWidth="175" CornerRadius="8"
+            Background="{DynamicResource CardBgBrush}"
+            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+            Margin="0,0,8,0" Padding="6,4">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <!-- 文件类型图标徽标 -->
+            <Border Grid.Column="0" Width="30" Height="30" CornerRadius="6"
+                    Background="{Binding Kind, Converter={StaticResource KindToBgBrush}}"
+                    Margin="0,0,8,0" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Kind, Converter={StaticResource KindToGlyph}}"
+                           FontFamily="{DynamicResource IconFont}" FontSize="14"
+                           Foreground="{Binding Kind, Converter={StaticResource KindToFgBrush}}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+
+            <!-- 文件名与大小 -->
+            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextPrimaryBrush}"
+                           TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}" />
+                <TextBlock Text="{Binding SizeText}" FontSize="10"
+                           Foreground="{DynamicResource TextMutedBrush}" Margin="0,1,0,0" />
             </StackPanel>
-            <!-- 右上角 × 删除 -->
-            <Button Content="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="9"
+
+            <!-- 删除按钮 -->
+            <Button Grid.Column="2" Content="&#xE711;" FontFamily="{DynamicResource IconFont}" FontSize="10"
                     Width="20" Height="20" Background="Transparent" BorderThickness="0"
-                    Foreground="Gray" HorizontalAlignment="Right" VerticalAlignment="Top"
-                    Margin="0,3,3,0" Cursor="Hand"
-                    ToolTip="移除附件"
-                    Click="OnRemoveClick" />
+                    Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center"
+                    Margin="4,0,0,0" Cursor="Hand" ToolTip="移除此附件"
+                    Click="OnRemoveClick">
+                <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="btnBd" Background="{TemplateBinding Background}" CornerRadius="10">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="btnBd" Property="Background" Value="{DynamicResource DangerLightBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Button.Template>
+            </Button>
         </Grid>
     </Border>
 </UserControl>

@@ -1,0 +1,32 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- 浅色主题 -->
+    <SolidColorBrush x:Key="BrandBrush" Color="#4B3FE3" />
+    <SolidColorBrush x:Key="BrandHoverBrush" Color="#3B30CA" />
+    <SolidColorBrush x:Key="BrandLightBrush" Color="#EEEDFC" />
+    <SolidColorBrush x:Key="BrandTextBrush" Color="#1E1B4B" />
+
+    <SolidColorBrush x:Key="WindowBgBrush" Color="#F4F5F8" />
+    <SolidColorBrush x:Key="CardBgBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="SidebarBgBrush" Color="#F8F9FB" />
+    <SolidColorBrush x:Key="SurfaceBrush" Color="#F7F7F9" />
+    <SolidColorBrush x:Key="SurfaceAltBrush" Color="#EFEFF4" />
+    <SolidColorBrush x:Key="NavBgBrush" Color="#E4E5EC" />
+
+    <SolidColorBrush x:Key="BorderBrush" Color="#CFCFD9" />
+    <SolidColorBrush x:Key="BorderSubtleBrush" Color="#DCDCE6" />
+
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#18181B" />
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#52525B" />
+    <SolidColorBrush x:Key="TextMutedBrush" Color="#8E8E9A" />
+    <SolidColorBrush x:Key="TextDisabledBrush" Color="#A1A1AA" />
+
+    <SolidColorBrush x:Key="OnlineBrush" Color="#10B981" />
+    <SolidColorBrush x:Key="OnlineLightBrush" Color="#D1FAE5" />
+    <SolidColorBrush x:Key="ConnectingBrush" Color="#F59E0B" />
+    <SolidColorBrush x:Key="OfflineBrush" Color="#9CA3AF" />
+    <SolidColorBrush x:Key="DangerBrush" Color="#EF4444" />
+    <SolidColorBrush x:Key="DangerLightBrush" Color="#FEE2E2" />
+
+</ResourceDictionary>

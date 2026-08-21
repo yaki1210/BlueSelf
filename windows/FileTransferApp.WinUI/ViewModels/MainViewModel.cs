@@ -103,10 +103,20 @@ public sealed class MainViewModel : ObservableObject
     // ---- Device column ----
     public ObservableCollection<DeviceItem> Devices { get; } = new();
     private DeviceItem? _selectedDevice;
-    public DeviceItem? SelectedDevice { get => _selectedDevice; set => Set(ref _selectedDevice, value); }
+    public DeviceItem? SelectedDevice
+    {
+        get => _selectedDevice;
+        set { if (Set(ref _selectedDevice, value)) { OnPropertyChanged(nameof(HasSelectedDevice)); ShowTargetHint = false; } }
+    }
+    public bool HasSelectedDevice => SelectedDevice != null;
     public string LocalName { get; } = "BlueSelf-PC";
-    private bool _isListening = true;
-    public bool IsListening { get => _isListening; set => Set(ref _isListening, value); }
+
+    // 监听与发现默认开启、不提供开关（同手机版）
+    public bool IsListening { get; } = true;
+
+    // 未选择设备时点了发送，才显示目标提示（第 6 点）
+    private bool _showTargetHint;
+    public bool ShowTargetHint { get => _showTargetHint; set => Set(ref _showTargetHint, value); }
 
     public RelayCommandNoArg AddPairingCommand => new(() => Log("添加配对（占位）"));
 
@@ -152,13 +162,21 @@ public sealed class MainViewModel : ObservableObject
     public string DetailTime => SelectedInbox?.Time ?? "";
     public string DetailPreview => SelectedInbox?.Preview ?? "";
 
-    // ---- Settings (dynamic settings arrive in stage 2; static flags for preview) ----
+    // ---- Settings ----
     public string[] Languages { get; } = { "中文", "English" };
     private string _language = "中文";
-    public string Language { get => _language; set => Set(ref _language, value); }
+    public string Language
+    {
+        get => _language;
+        set { if (Set(ref _language, value)) App.ApplyLanguage(value); }
+    }
     public string[] Themes { get; } = { "跟随系统", "亮色", "暗色" };
     private string _theme = "跟随系统";
-    public string Theme { get => _theme; set => Set(ref _theme, value); }
+    public string Theme
+    {
+        get => _theme;
+        set { if (Set(ref _theme, value)) App.ApplyTheme(value); }
+    }
     public string SavePath => @"%TEMP%\BlueSelf\received (占位路径)";
 
     // ---- Transfer status (third column) ----
@@ -188,9 +206,11 @@ public sealed class MainViewModel : ObservableObject
     {
         if (SelectedDevice == null)
         {
+            ShowTargetHint = true; // 未选设备时点了发送 → 显示提示（第 6 点）
             Log("请先在设备栏选择目标设备（占位）");
             return;
         }
+        ShowTargetHint = false;
         IsTransferring = true;
         Progress = 0;
         _progressSteps = 0;

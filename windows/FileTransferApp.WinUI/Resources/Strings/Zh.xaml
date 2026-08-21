@@ -1,0 +1,49 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:s="clr-namespace:System;assembly=mscorlib">
+
+    <!-- 导航 -->
+    <s:String x:Key="navWorkspace">工作区</s:String>
+    <s:String x:Key="navInbox">收件箱</s:String>
+    <s:String x:Key="navSettings">设置</s:String>
+    <s:String x:Key="logHeader">日志</s:String>
+
+    <!-- 设备栏 -->
+    <s:String x:Key="wsPairedTitle">已配对设备</s:String>
+    <s:String x:Key="wsAddPair">添加配对设备</s:String>
+
+    <!-- 编辑器 -->
+    <s:String x:Key="wsTargetHint">请在左侧选择要发送的目标设备</s:String>
+    <s:String x:Key="wsSendTo">发送目标：</s:String>
+    <s:String x:Key="wsPlaceholder">在此输入要即时发送的文本内容，或点击下方添加附件……</s:String>
+    <s:String x:Key="wsAttachLabel">待发附件</s:String>
+    <s:String x:Key="btnPaste">粘贴</s:String>
+    <s:String x:Key="btnAttach">添加附件</s:String>
+    <s:String x:Key="btnSend">发送到设备</s:String>
+
+    <!-- 实时传输详情 -->
+    <s:String x:Key="tpTitle">实时传输详情</s:String>
+    <s:String x:Key="tpCurrent">当前文件</s:String>
+    <s:String x:Key="tpInstant">瞬时速率</s:String>
+    <s:String x:Key="tpAvg">累计平均</s:String>
+
+    <!-- 收件箱 -->
+    <s:String x:Key="inTitle">收件箱</s:String>
+    <s:String x:Key="inEmpty">请选择一条消息查看详情</s:String>
+    <s:String x:Key="inEmptySub">接收到的文本消息与文件内容将在此处完整展示</s:String>
+    <s:String x:Key="inRecvTime">接收时间：</s:String>
+    <s:String x:Key="inBody">消息内容</s:String>
+    <s:String x:Key="inFiles">已接收附件</s:String>
+    <s:String x:Key="inSynced">已同步至本地下载目录</s:String>
+    <s:String x:Key="inOpenDir">打开保存目录</s:String>
+
+    <!-- 设置 -->
+    <s:String x:Key="stPref">偏好设置</s:String>
+    <s:String x:Key="stGeneral">通用与外观</s:String>
+    <s:String x:Key="stLanguage">显示语言 (Language)</s:String>
+    <s:String x:Key="stTheme">主题外观 (Theme)</s:String>
+    <s:String x:Key="stStorage">传输与存储</s:String>
+    <s:String x:Key="stSavePath">接收文件保存目录</s:String>
+    <s:String x:Key="stChange">更改位置</s:String>
+
+</ResourceDictionary>

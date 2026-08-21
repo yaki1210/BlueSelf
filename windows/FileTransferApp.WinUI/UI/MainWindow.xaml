@@ -3,12 +3,15 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:views="clr-namespace:FileTransferApp.WinUI.UI.Views"
         xmlns:converters="clr-namespace:FileTransferApp.WinUI.UI"
-        Title="BlueSelf" Height="640" Width="980"
+        Title="BlueSelf" Height="680" Width="1020"
+        MinHeight="620" MinWidth="880"
         WindowStartupLocation="CenterScreen"
-        Background="#FAFAFA">
+        Background="{DynamicResource WindowBgBrush}"
+        FontFamily="{StaticResource MainFont}">
     <Window.Resources>
-        <converters:BoolToVisibilityConverter x:Key="Bean" />
+        <converters:BoolToVisibilityConverter x:Key="BoolToVis" />
     </Window.Resources>
+
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -16,45 +19,141 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- 顶栏：设置 · BlueSelf · 收件箱 -->
-        <Border Grid.Row="0" Background="#F7F7F8" BorderBrush="#22000000" BorderThickness="0,0,0,1" Padding="12,6">
+        <!-- 顶部导航栏 -->
+        <Border Grid.Row="0" Background="{DynamicResource CardBgBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1"
+                Padding="16,10">
             <Grid>
-                <Button Style="{StaticResource IconButton}" Content="&#xE713;"
-                        HorizontalAlignment="Left" ToolTip="设置" Command="{Binding ShowSettingsCommand}" />
-                <Button Background="Transparent" BorderThickness="0" Cursor="Hand"
-                        HorizontalAlignment="Center" Command="{Binding ShowWorkspaceCommand}"
-                        ToolTip="返回工作区">
-                    <TextBlock Text="BlueSelf" FontSize="20" FontWeight="Bold" Foreground="#4B3FE3" />
-                </Button>
-                <Button Style="{StaticResource IconButton}" Content="&#xE715;"
-                        HorizontalAlignment="Right" ToolTip="收件箱" Command="{Binding ShowInboxCommand}" />
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- 左侧：品牌 Logo + 名称（Android 应用图标） -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border Width="32" Height="32" CornerRadius="8" Background="#F3F7FC" Margin="0,0,10,0">
+                        <Image Source="/Resources/ic_launcher.png" Stretch="UniformToFill" />
+                    </Border>
+                    <TextBlock Text="BlueSelf" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource BrandTextBrush}"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+
+                <!-- 中间：分段导航标签 -->
+                <Border Grid.Column="1" HorizontalAlignment="Center" Background="{DynamicResource NavBgBrush}"
+                        CornerRadius="20" Padding="3" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal">
+                        <!-- 工作区 -->
+                        <Button Command="{Binding ShowWorkspaceCommand}" Cursor="Hand" Margin="1,0">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="tabBd" CornerRadius="17" Padding="16,6" Background="Transparent">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE80F;" FontFamily="{StaticResource FluentIcons}" FontSize="13"
+                                                       VerticalAlignment="Center" Margin="0,0,6,0" x:Name="tabIcon"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Text="{DynamicResource navWorkspace}" FontSize="13" FontWeight="SemiBold"
+                                                       x:Name="tabText" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        </StackPanel>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <DataTrigger Binding="{Binding IsWorkspace}" Value="True">
+                                            <Setter TargetName="tabBd" Property="Background" Value="{DynamicResource CardBgBrush}" />
+                                            <Setter TargetName="tabIcon" Property="Foreground" Value="{DynamicResource BrandBrush}" />
+                                            <Setter TargetName="tabText" Property="Foreground" Value="{DynamicResource BrandBrush}" />
+                                        </DataTrigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+
+                        <!-- 收件箱 -->
+                        <Button Command="{Binding ShowInboxCommand}" Cursor="Hand" Margin="1,0">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="tabBd" CornerRadius="17" Padding="16,6" Background="Transparent">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE715;" FontFamily="{StaticResource FluentIcons}" FontSize="13"
+                                                       VerticalAlignment="Center" Margin="0,0,6,0" x:Name="tabIcon"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Text="{DynamicResource navInbox}" FontSize="13" FontWeight="SemiBold"
+                                                       x:Name="tabText" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        </StackPanel>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <DataTrigger Binding="{Binding IsInbox}" Value="True">
+                                            <Setter TargetName="tabBd" Property="Background" Value="{DynamicResource CardBgBrush}" />
+                                            <Setter TargetName="tabIcon" Property="Foreground" Value="{DynamicResource BrandBrush}" />
+                                            <Setter TargetName="tabText" Property="Foreground" Value="{DynamicResource BrandBrush}" />
+                                        </DataTrigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+
+                        <!-- 设置 -->
+                        <Button Command="{Binding ShowSettingsCommand}" Cursor="Hand" Margin="1,0">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="tabBd" CornerRadius="17" Padding="16,6" Background="Transparent">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE713;" FontFamily="{StaticResource FluentIcons}" FontSize="13"
+                                                       VerticalAlignment="Center" Margin="0,0,6,0" x:Name="tabIcon"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Text="{DynamicResource navSettings}" FontSize="13" FontWeight="SemiBold"
+                                                       x:Name="tabText" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        </StackPanel>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <DataTrigger Binding="{Binding IsSettings}" Value="True">
+                                            <Setter TargetName="tabBd" Property="Background" Value="{DynamicResource CardBgBrush}" />
+                                            <Setter TargetName="tabIcon" Property="Foreground" Value="{DynamicResource BrandBrush}" />
+                                            <Setter TargetName="tabText" Property="Foreground" Value="{DynamicResource BrandBrush}" />
+                                        </DataTrigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                    </StackPanel>
+                </Border>
             </Grid>
         </Border>
 
-        <!-- 内容区：按当前视图切换 -->
+        <!-- 主内容区：视图切换 -->
         <Grid Grid.Row="1">
-            <views:WorkspaceView Visibility="{Binding IsWorkspace, Converter={StaticResource Bean}}" />
-            <views:InboxView Visibility="{Binding IsInbox, Converter={StaticResource Bean}}" />
-            <views:SettingsView Visibility="{Binding IsSettings, Converter={StaticResource Bean}}" />
+            <views:WorkspaceView Visibility="{Binding IsWorkspace, Converter={StaticResource BoolToVis}}" />
+            <views:InboxView Visibility="{Binding IsInbox, Converter={StaticResource BoolToVis}}" />
+            <views:SettingsView Visibility="{Binding IsSettings, Converter={StaticResource BoolToVis}}" />
         </Grid>
 
-        <!-- 底部：日志（默认折叠） -->
-        <Expander Grid.Row="2" IsExpanded="False" Margin="12,6,12,12" Header=" 日志"
-                  Foreground="#52525B" FontSize="12">
-            <Border Background="#F0F0F2" CornerRadius="8" MaxHeight="160">
-                <ListBox ItemsSource="{Binding Logs}" Background="Transparent" BorderThickness="0"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <StackPanel Orientation="Horizontal" Margin="0,2">
-                                <TextBlock Text="{Binding Time}" Foreground="Gray" FontFamily="Consolas" />
-                                <TextBlock Text="  " />
-                                <TextBlock Text="{Binding Message}" Foreground="#171717" />
-                            </StackPanel>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
-            </Border>
-        </Expander>
+        <!-- 底部栏：折叠日志（默认折叠） -->
+        <Border Grid.Row="2" Background="{DynamicResource CardBgBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="16,8">
+            <Expander IsExpanded="False" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12">
+                <Expander.Header>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="&#xE756;" FontFamily="{StaticResource IconFont}" FontSize="13"
+                                   Foreground="{DynamicResource BrandBrush}" Margin="0,0,6,0" VerticalAlignment="Center" />
+                        <TextBlock Text="{DynamicResource logHeader}" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Expander.Header>
+                <Border Background="#18181B" CornerRadius="8" Padding="12,10" Margin="0,8,0,0" MaxHeight="140">
+                    <ListBox ItemsSource="{Binding Logs}" Background="Transparent" BorderThickness="0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Margin="0,2">
+                                    <Border Background="#27272A" CornerRadius="3" Padding="4,1" Margin="0,0,8,0">
+                                        <TextBlock Text="{Binding Time}" Foreground="#A1A1AA" FontFamily="Consolas, Cascadia Code, monospace" FontSize="11" />
+                                    </Border>
+                                    <TextBlock Text="{Binding Message}" Foreground="#F4F4F5" FontFamily="Consolas, Cascadia Code, monospace" FontSize="12" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Border>
+            </Expander>
+        </Border>
     </Grid>
 </Window>
