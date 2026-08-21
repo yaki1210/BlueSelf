@@ -351,6 +351,64 @@
                 </Setter>
             </Style>
 
+            <!-- 主题化 Expander 展开按钮的切换模板（箭头跟随主题） -->
+            <ControlTemplate x:Key="ThemedExpanderToggle" TargetType="ToggleButton">
+                <Border Background="Transparent" Padding="2">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="chev" Grid.Column="0" Text="&#xE70D;"
+                                   FontFamily="{StaticResource IconFont}" FontSize="11"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   RenderTransformOrigin="0.5,0.5"
+                                   VerticalAlignment="Center" Margin="0,0,6,0">
+                            <TextBlock.RenderTransform>
+                                <RotateTransform Angle="0" CenterX="0.5" CenterY="0.5" />
+                            </TextBlock.RenderTransform>
+                        </TextBlock>
+                        <ContentPresenter Grid.Column="1" Content="{TemplateBinding Content}"
+                                          VerticalAlignment="Center" />
+                    </Grid>
+                </Border>
+                <ControlTemplate.Triggers>
+                    <Trigger Property="IsChecked" Value="True">
+                        <Setter TargetName="chev" Property="Foreground" Value="{DynamicResource BrandBrush}" />
+                        <Setter TargetName="chev" Property="RenderTransform">
+                            <Setter.Value>
+                                <RotateTransform Angle="90" CenterX="0.5" CenterY="0.5" />
+                            </Setter.Value>
+                        </Setter>
+                    </Trigger>
+                </ControlTemplate.Triggers>
+            </ControlTemplate>
+
+            <!-- 主题化 Expander 样式 -->
+            <Style x:Key="ThemedExpander" TargetType="Expander">
+                <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Expander">
+                            <StackPanel>
+                                <ToggleButton x:Name="Header"
+                                              Content="{TemplateBinding Header}"
+                                              Template="{StaticResource ThemedExpanderToggle}"
+                                              IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}" />
+                                <ContentPresenter x:Name="ContentHost"
+                                                  Visibility="Collapsed"
+                                                  Content="{TemplateBinding Content}" />
+                            </StackPanel>
+                            <ControlTemplate.Triggers>
+                                <Trigger SourceName="Header" Property="IsChecked" Value="True">
+                                    <Setter TargetName="ContentHost" Property="Visibility" Value="Visible" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
             <!-- ToolTip 样式 -->
             <Style TargetType="ToolTip">
                 <Setter Property="Background" Value="#27272A" />

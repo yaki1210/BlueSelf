@@ -5,9 +5,16 @@
         xmlns:converters="clr-namespace:FileTransferApp.WinUI.UI"
         Title="BlueSelf" Height="680" Width="1020"
         MinHeight="620" MinWidth="880"
+        WindowStyle="None"
+        ResizeMode="CanResize"
         WindowStartupLocation="CenterScreen"
         Background="{DynamicResource WindowBgBrush}"
         FontFamily="{StaticResource MainFont}">
+    <WindowChrome.WindowChrome>
+        <!-- 自绘标题栏：由 WindowChrome 接管外观，避免 OS 残留系统边框（白边），
+             CaptionHeight=0 保留自定拖拽；ResizeBorderThickness 提供客户区边缘缩放 -->
+        <WindowChrome CaptionHeight="0" ResizeBorderThickness="6" GlassFrameThickness="0" CornerRadius="0" />
+    </WindowChrome.WindowChrome>
     <Window.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVis" />
     </Window.Resources>
@@ -19,14 +26,15 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- 顶部导航栏 -->
+        <!-- 顶部导航栏（自绘标题栏，可拖拽） -->
         <Border Grid.Row="0" Background="{DynamicResource CardBgBrush}"
                 BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1"
-                Padding="16,10">
+                Padding="16,8" MouseLeftButtonDown="OnHeaderMouseLeftButtonDown">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
                 <!-- 左侧：品牌名称 -->
@@ -112,6 +120,34 @@
                         </Button>
                     </StackPanel>
                 </Border>
+
+                <!-- 右侧：自绘窗口按钮（最小化 / 最大化 / 关闭） -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Style="{StaticResource IconButton}" Content="&#xE921;" ToolTip="最小化"
+                            Click="OnMinimizeButtonClick" />
+                    <Button x:Name="MaximizeButton" Style="{StaticResource IconButton}" Content="&#xE922;" ToolTip="最大化"
+                            Click="OnMaximizeButtonClick" Margin="2,0" />
+                    <Border CornerRadius="6" Background="Transparent">
+                        <Button Width="36" Height="36" Background="Transparent" BorderThickness="0"
+                                Content="&#xE8BB;" FontFamily="{StaticResource IconFont}" FontSize="14"
+                                Foreground="{DynamicResource TextSecondaryBrush}" Cursor="Hand" ToolTip="关闭"
+                                Click="OnCloseButtonClick">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="6">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="bd" Property="Background" Value="{DynamicResource DangerBrush}" />
+                                            <Setter Property="Foreground" Value="#FFFFFF" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                    </Border>
+                </StackPanel>
             </Grid>
         </Border>
 
@@ -125,7 +161,7 @@
         <!-- 底部栏：折叠日志（默认折叠） -->
         <Border Grid.Row="2" Background="{DynamicResource CardBgBrush}"
                 BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="16,8">
-            <Expander IsExpanded="False" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12">
+            <Expander IsExpanded="False" Style="{StaticResource ThemedExpander}" FontSize="12">
                 <Expander.Header>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <TextBlock Text="&#xE756;" FontFamily="{StaticResource IconFont}" FontSize="13"
