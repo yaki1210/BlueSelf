@@ -82,6 +82,21 @@
                                                        Foreground="{DynamicResource TextSecondaryBrush}" />
                                             <TextBlock Text="{DynamicResource navInbox}" FontSize="13" FontWeight="SemiBold"
                                                        x:Name="tabText" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <!-- 未读计数角标 -->
+                                            <Border Margin="6,0,0,0" Background="{DynamicResource DangerBrush}" CornerRadius="8"
+                                                    Padding="6,1" VerticalAlignment="Center">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding UnreadCount}" Value="0">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                                <TextBlock Text="{Binding UnreadCount}" FontSize="10" FontWeight="Bold"
+                                                           Foreground="#FFFFFF" VerticalAlignment="Center" />
+                                            </Border>
                                         </StackPanel>
                                     </Border>
                                     <ControlTemplate.Triggers>
@@ -156,6 +171,7 @@
             <views:WorkspaceView Visibility="{Binding IsWorkspace, Converter={StaticResource BoolToVis}}" />
             <views:InboxView Visibility="{Binding IsInbox, Converter={StaticResource BoolToVis}}" />
             <views:SettingsView Visibility="{Binding IsSettings, Converter={StaticResource BoolToVis}}" />
+            <views:AddDeviceView Visibility="{Binding IsAddDevice, Converter={StaticResource BoolToVis}}" />
         </Grid>
 
         <!-- 底部栏：折叠日志（默认折叠） -->

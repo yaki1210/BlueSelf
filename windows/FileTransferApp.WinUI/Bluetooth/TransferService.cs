@@ -13,8 +13,10 @@ public enum TransferDir { SEND, RECEIVE }
 /// <summary>Progress snapshot pushed to the UI (values are simple; VM formats them).</summary>
 public sealed record TransferProgress(TransferDir Dir, double Fraction, long BytesDone, long TotalBytes, long ElapsedMs);
 
-/// <summary>An inbound file notification (receiver shows it in the inbox).</summary>
-public sealed record InboundFile(string Id, string Name, long Size, string SavePath);
+/// <summary>An inbound file notification (receiver shows it in the inbox).
+/// <paramref name="ParentMessageId"/> is the parent TEXT message id (from FILE_START.msgId),
+/// used by the UI to merge a file into the message it belongs to.</summary>
+public sealed record InboundFile(string Id, string Name, long Size, string SavePath, string ParentMessageId = "");
 
 /// <summary>
 /// Drives the frame pipeline over a live <see cref="StreamSocket"/>. It both:
@@ -31,12 +33,19 @@ public sealed class TransferService : IDisposable
     private long _seq;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
 
+    /// <summary>Bluetooth address of the currently connected peer (null when disconnected).</summary>
+    public ulong? ConnectedPeerAddress { get; private set; }
+
     // Inbound file session (one active at a time)
     private ReceiveSession? _recv;
 
-    public event Action<string>? TextReceived;
+    /// <summary>Raised with (textMessageId, content) when a TEXT frame arrives.</summary>
+    public event Action<string, string>? TextReceived;
     public event Action<InboundFile>? FileReceived;
+    /// <summary>Raised with the incoming file name when an inbound FILE_START begins (for the status panel).</summary>
+    public event Action<string>? ReceiveStarted;
     public event Action<TransferProgress>? Progress; // both directions
+    public event Action<TransferDir>? TransferCompleted; // send/receive finished (UI hides status)
     public event Action<string>? Info;
     public event Action<string>? LogError;
     public event Action? Disconnected;
@@ -50,52 +59,93 @@ public sealed class TransferService : IDisposable
     public string SaveDir { get; }
     public bool IsConnected => _socket != null;
 
+    /// <summary>
+    /// Returns a device name the peer can classify into the correct icon:
+    /// if the machine name doesn't already contain "电脑"/"Windows", append " Windows"
+    /// so Android shows the PC icon for this device.
+    /// </summary>
+    public static string LocalDeviceName()
+    {
+        var name = Environment.MachineName;
+        if (string.IsNullOrWhiteSpace(name)) return "Windows";
+        if (name.Contains("电脑", StringComparison.Ordinal) || name.Contains("Windows", StringComparison.OrdinalIgnoreCase))
+            return name;
+        return name + " Windows";
+    }
+
     // ---------- Connection ----------
 
-    public void Attach(StreamSocket socket)
+    public void Attach(StreamSocket socket) => Attach(socket, null);
+
+    public void Attach(StreamSocket socket, ulong? peerAddress)
     {
+        // 先安全清理旧连接，避免旧 ReadLoop 与新连接串扰。
+        Detach(silent: true);
+
         _socket = socket;
+        ConnectedPeerAddress = peerAddress;
         _cts = new CancellationTokenSource();
         _readTask = Task.Run(() => ReadLoop(socket, _cts.Token));
     }
 
-    public void Detach()
+    /// <summary>断开当前连接（幂等）。仅当确实有活动 socket 时才触发 Disconnected 事件。</summary>
+    public void Detach() => Detach(silent: false);
+
+    private void Detach(bool silent)
     {
-        try { _cts?.Cancel(); } catch { }
-        try { _socket?.Dispose(); } catch { }
-        try { _socket?.InputStream.Dispose(); } catch { }
-        try { _socket?.OutputStream.Dispose(); } catch { }
+        var hadActive = _socket != null;
+        var cts = _cts;
+        _cts = null;
+        try { cts?.Cancel(); } catch { }
+        var socket = _socket;
         _socket = null;
+        ConnectedPeerAddress = null;
+        if (socket != null)
+        {
+            try { socket.Dispose(); } catch { }
+            try { socket.InputStream.Dispose(); } catch { }
+            try { socket.OutputStream.Dispose(); } catch { }
+        }
         ClearReceiveSession();
-        Post(() => Disconnected?.Invoke());
+        if (hadActive && !silent) Post(() => Disconnected?.Invoke());
+    }
+
+    /// <summary>移除一个已知的连接，仅当其仍是当前连接时才做全局清理（用于 ReadLoop 退出时）。</summary>
+    private void ClearIfCurrent(StreamSocket socket)
+    {
+        if (!ReferenceEquals(_socket, socket)) return; // 已被新连接替换，不做任何清理
+        Detach(silent: true);
     }
 
     // ---------- Send ----------
 
-    public async Task SendTextAsync(string content)
+    public async Task SendTextAsync(string content, string? messageId = null)
     {
+        var id = messageId ?? Guid.NewGuid().ToString();
         var buf = FileMetaJson.EncodeText(new Packet(
-            MessageProtocol.ProtocolVersion, "TEXT", Guid.NewGuid().ToString(),
-            "blueself-pc", Environment.MachineName, "remote", "remote", content,
+            MessageProtocol.ProtocolVersion, "TEXT", id,
+            "blueself-pc", LocalDeviceName(), "remote", "remote", content,
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
         await WriteFramesAsync(new[] { new Frame(MessageProtocol.TypeTxt, NextSeq(), buf) });
     }
 
-    public async Task SendFileAsync(string path, CancellationToken ct = default)
+    public async Task SendFileAsync(string path, string fileId, string? msgId = null, CancellationToken ct = default)
     {
         var file = new FileInfo(path);
         var size = file.Length;
         if (size <= 0) return;
 
         var md5 = await ComputeMd5Async(path, ct);
-        var fileId = Guid.NewGuid().ToString("N");
         var chunkSize = MessageProtocol.DefaultChunkSize;
         var totalChunks = (long)Math.Ceiling(size / (double)chunkSize);
         var start = DateTime.UtcNow;
 
+        // FILE_START.msgId 必须等于父 TXT 消息的 id，Android 端才会把文件挂到该消息下。
+        var parentMsgId = msgId ?? fileId;
         var startFrame = new Frame(MessageProtocol.TypeFileStart, NextSeq(),
-            FileMetaJson.EncodeStart(fileId, fileId, file.Name, "application/octet-stream", size, md5, chunkSize, totalChunks));
+            FileMetaJson.EncodeStart(fileId, parentMsgId, file.Name, "application/octet-stream", size, md5, chunkSize, totalChunks));
         await WriteFramesAsync(new[] { startFrame });
+        EmitProgress(TransferDir.SEND, size, 0, start); // 0% 起点
 
         using var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, chunkSize, FileOptions.SequentialScan);
         var buffer = new byte[chunkSize];
@@ -116,7 +166,7 @@ public sealed class TransferService : IDisposable
                     Buffer.BlockCopy(buffer, 0, payload, 4, read);
                     window.Add(new Frame(MessageProtocol.TypeFileChunk, NextSeq(), payload));
                     sentBytes += read;
-                    if (sentBytes - lastProgress >= chunkSize * 4)
+                    if (sentBytes - lastProgress >= chunkSize)
                     {
                         EmitProgress(TransferDir.SEND, size, sentBytes, start);
                         lastProgress = sentBytes;
@@ -129,7 +179,8 @@ public sealed class TransferService : IDisposable
         catch (Exception ex)
         {
             Post(() => LogError?.Invoke($"发送失败: {ex.Message}"));
-            return;
+            Post(() => TransferCompleted?.Invoke(TransferDir.SEND));
+            throw; // 上抛，让调用方感知失败，避免"看起来发送成功实际没发出去"
         }
 
         var endFrame = new Frame(MessageProtocol.TypeFileEnd, NextSeq(),
@@ -137,6 +188,7 @@ public sealed class TransferService : IDisposable
         await WriteFramesAsync(new[] { endFrame });
         EmitProgress(TransferDir.SEND, size, size, start);
         Post(() => Info?.Invoke($"已发送 {file.Name}"));
+        Post(() => TransferCompleted?.Invoke(TransferDir.SEND));
     }
 
     private async Task WriteFramesAsync(IEnumerable<Frame> frames)
@@ -150,7 +202,9 @@ public sealed class TransferService : IDisposable
         try
         {
             await writer.StoreAsync();
-            await writer.FlushAsync();
+            // 注意：不调用 FlushAsync()。对 StreamSocket 输出流，FlushAsync 会等待对端消费确认，
+            // 蓝牙流控下可能长时间挂起导致发送 UI 卡"传输中"。数据已交给蓝牙栈发送，
+            // 帧可靠性由协议层的 FILE_ACK / MD5 端到端校验保证（与 Android 端 flush 语义一致）。
         }
         finally
         {
@@ -178,7 +232,7 @@ public sealed class TransferService : IDisposable
                 {
                     break;
                 }
-                HandleFrame(frame, socket);
+                await HandleFrameAsync(frame, socket);
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -187,26 +241,28 @@ public sealed class TransferService : IDisposable
         }
         finally
         {
-            Detach();
+            // 只清理本循环所属的连接；若已被新连接替换则不动，避免误杀新连接。
+            ClearIfCurrent(socket);
         }
     }
 
-    private void HandleFrame(Frame frame, StreamSocket socket)
+    private async Task HandleFrameAsync(Frame frame, StreamSocket socket)
     {
         switch (frame.Type)
         {
             case MessageProtocol.TypeTxt:
                 var pkt = FileMetaJson.DecodeText(frame.Payload, "remote", "远端设备");
-                Post(() => TextReceived?.Invoke(pkt.Content));
+                Post(() => TextReceived?.Invoke(pkt.Id, pkt.Content));
                 break;
             case MessageProtocol.TypeFileStart:
                 HandleFileStart(frame);
                 break;
             case MessageProtocol.TypeFileChunk:
-                _ = HandleFileChunk(frame);
+                // 严格按读取顺序写入磁盘（对齐 Android 的同步入队），避免乱序导致 MD5 失败
+                await HandleFileChunk(frame);
                 break;
             case MessageProtocol.TypeFileEnd:
-                _ = HandleFileEnd(frame);
+                await HandleFileEnd(frame);
                 break;
             case MessageProtocol.TypeFileAck:
                 break; // acks are informational; progress is driven locally
@@ -236,6 +292,7 @@ public sealed class TransferService : IDisposable
 
         EmitProgress(TransferDir.RECEIVE, meta.Size, 0, DateTime.UtcNow);
         Post(() => Info?.Invoke($"开始接收 {meta.Name}（{meta.Size} 字节）"));
+        Post(() => ReceiveStarted?.Invoke(meta.Name));
     }
 
     private async Task DrainWriter(ReceiveSession s)
@@ -295,7 +352,7 @@ public sealed class TransferService : IDisposable
             try
             {
                 File.Move(session.StagingPath, finalPath, overwrite: true);
-                Post(() => FileReceived?.Invoke(new InboundFile(end.Id, session.Meta.Name, session.Meta.Size, finalPath)));
+                Post(() => FileReceived?.Invoke(new InboundFile(end.Id, session.Meta.Name, session.Meta.Size, finalPath, session.Meta.MsgId)));
                 Post(() => Info?.Invoke($"文件保存位置: {finalPath}"));
             }
             catch (Exception ex)
@@ -308,6 +365,7 @@ public sealed class TransferService : IDisposable
             try { if (File.Exists(session.StagingPath)) File.Delete(session.StagingPath); } catch { }
             Post(() => LogError?.Invoke($"接收 {session.Meta.Name} 校验失败"));
         }
+        Post(() => TransferCompleted?.Invoke(TransferDir.RECEIVE));
     }
 
     private void ClearReceiveSession()

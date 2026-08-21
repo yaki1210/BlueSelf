@@ -12,6 +12,13 @@ public partial class MainWindow : Window
         DataContext = MainViewModel.Instance;
     }
 
+    // 窗口重新获得焦点时刷新设备列表（如从系统蓝牙设置配对后返回）。
+    protected override void OnActivated(EventArgs e)
+    {
+        base.OnActivated(e);
+        MainViewModel.Instance.OnWindowActivated();
+    }
+
     // 标题栏拖拽移动窗口
     private void OnHeaderMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {

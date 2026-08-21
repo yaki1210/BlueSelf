@@ -31,11 +31,14 @@
                 <Grid Grid.Row="0" Margin="2,0,2,8">
                     <TextBlock Text="{DynamicResource wsPairedTitle}" FontSize="12" FontWeight="SemiBold"
                                Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
-                    <Border HorizontalAlignment="Right" Background="{DynamicResource SurfaceAltBrush}"
-                            CornerRadius="10" Padding="6,1">
-                        <TextBlock Text="{Binding Devices.Count, StringFormat='{}{0} 台'}" FontSize="11"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" FontWeight="Medium" />
-                    </Border>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <Border Background="{DynamicResource SurfaceAltBrush}" CornerRadius="10" Padding="6,1" Margin="0,0,6,0">
+                            <TextBlock Text="{Binding Devices.Count, StringFormat='{}{0} 台'}" FontSize="11"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" FontWeight="Medium" />
+                        </Border>
+                        <Button Style="{StaticResource IconButton}" Command="{Binding RefreshDevicesCommand}"
+                                Content="&#xE72C;" ToolTip="{DynamicResource wsRefresh}" Width="26" Height="26" FontSize="12" />
+                    </StackPanel>
                 </Grid>
 
                 <!-- 设备列表 -->
@@ -51,13 +54,13 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <!-- 底部添加配对按钮 -->
+                <!-- 底部添加新设备按钮 -->
                 <Button Grid.Row="2" Style="{StaticResource PillButtonOutline}"
-                        Command="{Binding AddPairingCommand}" Margin="0,10,0,0">
+                        Command="{Binding ShowAddDeviceCommand}" Margin="0,10,0,0">
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                         <TextBlock Text="&#xE710;" FontFamily="{StaticResource IconFont}" FontSize="12"
                                    VerticalAlignment="Center" Margin="0,0,6,0" />
-                        <TextBlock Text="{DynamicResource wsAddPair}" VerticalAlignment="Center" />
+                        <TextBlock Text="{DynamicResource wsAddDevice}" VerticalAlignment="Center" />
                     </StackPanel>
                 </Button>
             </Grid>
@@ -89,7 +92,7 @@
                         </StackPanel>
 
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
-                                    Visibility="{Binding SelectedDevice, Converter={StaticResource NullToVis}}">
+                                    Visibility="{Binding IsTargetRowVisible, Converter={StaticResource BoolToVis}}">
                             <TextBlock Text="&#xE8EA;" FontFamily="{StaticResource IconFont}" FontSize="13"
                                        Foreground="{DynamicResource BrandBrush}" Margin="0,0,6,0" VerticalAlignment="Center" />
                             <TextBlock Text="{DynamicResource wsSendTo}" FontSize="12" Foreground="{DynamicResource TextMutedBrush}"
@@ -116,52 +119,49 @@
                                Visibility="{Binding Text, Converter={StaticResource EmptyToVis}}" />
                 </Grid>
 
-                <!-- 附件托盘区 -->
+                <!-- 附件托盘区（无文字标签） -->
                 <Border Grid.Row="2" Margin="0,12,0,14" Background="{DynamicResource SidebarBgBrush}"
                         BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1"
                         CornerRadius="10" Padding="10,8">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
-                            <TextBlock Text="&#xE723;" FontFamily="{StaticResource IconFont}" FontSize="13"
-                                       Foreground="{DynamicResource TextMutedBrush}" Margin="0,0,4,0" VerticalAlignment="Center" />
-                            <TextBlock Text="{DynamicResource wsAttachLabel}" FontSize="12" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
-                        </StackPanel>
-                        <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-                            <ItemsControl ItemsSource="{Binding Attachments}">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate><controls:AttachmentChip /></DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </ScrollViewer>
-                    </Grid>
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding Attachments}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate><controls:AttachmentChip /></DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
                 </Border>
 
-                <!-- 底部操作按钮栏 -->
+                <!-- 待发内容总大小 + 底部操作按钮栏 -->
                 <Grid Grid.Row="3">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                        <Button Style="{StaticResource IconCircleButton}" Command="{Binding PasteCommand}"
-                                ToolTip="粘贴剪贴板文本" Margin="0,0,8,0" Content="&#xE77F;" />
-                        <Button Style="{StaticResource IconCircleButton}" Command="{Binding AttachCommand}"
-                                ToolTip="添加文件/图片/文档" Content="&#xE723;" />
-                    </StackPanel>
-                    <Button Grid.Column="1" Style="{StaticResource PillButton}" Command="{Binding StartSendCommand}">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="{DynamicResource btnSend}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                            <TextBlock Text="&#xE724;" FontFamily="{StaticResource IconFont}" FontSize="13" VerticalAlignment="Center" />
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="{Binding PendingSizeText}" FontSize="11"
+                               FontFamily="Consolas, Cascadia Code, monospace"
+                               Foreground="{DynamicResource TextMutedBrush}" HorizontalAlignment="Right" Margin="0,0,6,8" />
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Style="{StaticResource IconCircleButton}" Command="{Binding PasteCommand}"
+                                    ToolTip="粘贴剪贴板文本" Margin="0,0,8,0" Content="&#xE77F;" />
+                            <Button Style="{StaticResource IconCircleButton}" Command="{Binding AttachCommand}"
+                                    ToolTip="添加文件/图片/文档" Content="&#xE723;" />
                         </StackPanel>
-                    </Button>
+                        <Button Grid.Column="1" Style="{StaticResource PillButton}" Command="{Binding StartSendCommand}">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="{DynamicResource btnSend}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <TextBlock Text="&#xE724;" FontFamily="{StaticResource IconFont}" FontSize="13" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                    </Grid>
                 </Grid>
             </Grid>
         </Border>

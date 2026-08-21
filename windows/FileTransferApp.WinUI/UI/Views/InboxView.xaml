@@ -4,9 +4,33 @@
              xmlns:converters="clr-namespace:FileTransferApp.WinUI.UI">
     <UserControl.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVis" />
+        <converters:InverseBoolToVisibilityConverter x:Key="InvBoolToVis" />
         <converters:NullToVisibilityConverter x:Key="NullToVis" />
         <converters:InverseNullToVisibilityConverter x:Key="InvNullToVis" />
-        
+        <converters:HasItemsToVisibilityConverter x:Key="HasItemsToVis" />
+        <converters:KindToGlyphConverter x:Key="KindToGlyph" />
+        <converters:DeviceKindToGlyphConverter x:Key="DeviceGlyph" />
+
+        <!-- 顶部小动作按钮 -->
+        <Style x:Key="MiniActionButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource BrandBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- 未读红点 -->
         <Style x:Key="UnreadDot" TargetType="Ellipse">
             <Setter Property="Width" Value="8" />
@@ -39,7 +63,7 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <!-- 列表顶部标题栏 -->
+                <!-- 列表顶部标题栏 + 已读/清空动作 -->
                 <Grid Grid.Row="0" Margin="2,0,2,12">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <TextBlock Text="{DynamicResource inTitle}" FontSize="14" FontWeight="Bold"
@@ -48,6 +72,16 @@
                             <TextBlock Text="{Binding Inbox.Count, StringFormat='{}{0} 条记录'}" FontSize="11"
                                        Foreground="{DynamicResource BrandBrush}" FontWeight="SemiBold" />
                         </Border>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <Button Style="{StaticResource MiniActionButton}" Command="{Binding MarkAllReadCommand}"
+                                ToolTip="{DynamicResource inMarkAllRead}">
+                            <TextBlock Text="{DynamicResource inMarkAllRead}" VerticalAlignment="Center" />
+                        </Button>
+                        <Button Style="{StaticResource MiniActionButton}" Command="{Binding ClearInboxCommand}"
+                                ToolTip="{DynamicResource inClear}" Foreground="{DynamicResource TextMutedBrush}">
+                            <TextBlock Text="{DynamicResource inClear}" VerticalAlignment="Center" />
+                        </Button>
                     </StackPanel>
                 </Grid>
 
@@ -66,10 +100,10 @@
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
 
-                                    <!-- 发送设备头像 -->
+                                    <!-- 发送设备头像（随对端类型） -->
                                     <Border Grid.Column="0" Width="36" Height="36" CornerRadius="8"
                                             Background="{DynamicResource SurfaceAltBrush}" Margin="0,0,10,0" VerticalAlignment="Top">
-                                        <TextBlock Text="&#xE8EA;" FontFamily="{DynamicResource IconFont}" FontSize="16"
+                                        <TextBlock Text="{Binding DeviceKind, Converter={StaticResource DeviceGlyph}}" FontFamily="{StaticResource IconFont}" FontSize="16"
                                                    Foreground="{DynamicResource TextSecondaryBrush}"
                                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
                                     </Border>
@@ -91,9 +125,10 @@
 
                                         <!-- 附件提示徽标（如果有） -->
                                         <Border HorizontalAlignment="Left" Background="{DynamicResource BrandLightBrush}"
-                                                CornerRadius="4" Padding="6,1" Margin="0,0,0,0">
+                                                CornerRadius="4" Padding="6,1" Margin="0,0,0,0"
+                                                Visibility="{Binding HasAttachments, Converter={StaticResource BoolToVis}}">
                                             <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="&#xE723;" FontFamily="{DynamicResource IconFont}" FontSize="10"
+                                                <TextBlock Text="&#xE723;" FontFamily="{StaticResource IconFont}" FontSize="10"
                                                            Foreground="{DynamicResource BrandBrush}" Margin="0,0,4,0" VerticalAlignment="Center" />
                                                 <TextBlock Text="{Binding FileInfo}" FontSize="10" FontWeight="SemiBold"
                                                            Foreground="{DynamicResource BrandBrush}" VerticalAlignment="Center" />
@@ -118,7 +153,7 @@
                             Visibility="{Binding SelectedInbox, Converter={StaticResource InvNullToVis}}">
                     <Border Width="56" Height="56" CornerRadius="28" Background="{DynamicResource SurfaceAltBrush}"
                             HorizontalAlignment="Center" Margin="0,0,0,12">
-                        <TextBlock Text="&#xE715;" FontFamily="{DynamicResource IconFont}" FontSize="24"
+                        <TextBlock Text="&#xE715;" FontFamily="{StaticResource IconFont}" FontSize="24"
                                    Foreground="{DynamicResource TextMutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
                     <TextBlock Text="{DynamicResource inEmpty}" FontSize="14" FontWeight="SemiBold"
@@ -133,63 +168,115 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <!-- 消息头部元信息 -->
+                    <!-- 消息头部元信息：对端图标 + 设备名 + 方向徽标 + 时间 -->
                     <Border Grid.Row="0" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,0,0,1"
                             Padding="0,0,0,16" Margin="0,0,0,16">
                         <Grid>
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                 <Border Width="40" Height="40" CornerRadius="10" Background="{DynamicResource BrandLightBrush}" Margin="0,0,12,0">
-                                    <TextBlock Text="&#xE8EA;" FontFamily="{DynamicResource IconFont}" FontSize="18"
+                                    <TextBlock Text="{Binding DetailGlyph, Converter={StaticResource DeviceGlyph}}" FontFamily="{StaticResource IconFont}" FontSize="18"
                                                Foreground="{DynamicResource BrandBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
                                 <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding DetailDevice}" FontSize="16" FontWeight="Bold"
-                                               Foreground="{DynamicResource TextPrimaryBrush}" />
-                                    <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                                        <TextBlock Text="{DynamicResource inRecvTime}" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" />
-                                        <TextBlock Text="{Binding DetailTime}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" FontWeight="Medium" />
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding DetailDevice}" FontSize="16" FontWeight="Bold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                                        <Border Margin="8,0,0,0" Background="{DynamicResource BrandLightBrush}"
+                                                CornerRadius="6" Padding="6,1" VerticalAlignment="Center">
+                                            <TextBlock FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource BrandBrush}">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="{DynamicResource incoming}" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding DetailIsOutgoing}" Value="True">
+                                                                <Setter Property="Text" Value="{DynamicResource outgoing}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </Border>
                                     </StackPanel>
+                                    <TextBlock Text="{Binding DetailTime}" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" Margin="0,4,0,0" />
                                 </StackPanel>
                             </StackPanel>
                         </Grid>
                     </Border>
 
-                    <!-- 消息正文气泡卡片 -->
+                    <!-- 消息正文 -->
                     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                         <StackPanel>
                             <TextBlock Text="{DynamicResource inBody}" FontSize="12" FontWeight="SemiBold"
                                        Foreground="{DynamicResource TextMutedBrush}" Margin="0,0,0,8" />
                             <Border Background="{DynamicResource SidebarBgBrush}"
                                     BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1"
-                                    CornerRadius="10" Padding="16">
-                                <TextBlock Text="{Binding DetailPreview}" FontSize="14" LineHeight="22"
+                                    CornerRadius="10" Padding="16"
+                                    Visibility="{Binding DetailHasContent, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="{Binding DetailContent}" FontSize="14" LineHeight="22"
                                            Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
                             </Border>
+                            <TextBlock Text="{DynamicResource inNoContent}" FontSize="13" Foreground="{DynamicResource TextDisabledBrush}"
+                                       Margin="2,4,0,0"
+                                       Visibility="{Binding DetailHasContent, Converter={StaticResource InvBoolToVis}}" />
                         </StackPanel>
                     </ScrollViewer>
 
-                    <!-- 关联附件区域 -->
+                    <!-- 关联附件区域（有附件才显示） -->
                     <Border Grid.Row="2" Margin="0,16,0,0" BorderBrush="{DynamicResource BorderSubtleBrush}"
-                            BorderThickness="0,1,0,0" Padding="0,14,0,0">
+                            BorderThickness="0,1,0,0" Padding="0,14,0,0"
+                            Visibility="{Binding DetailAttachments, Converter={StaticResource HasItemsToVis}}">
                         <StackPanel>
                             <TextBlock Text="{DynamicResource inFiles}" FontSize="12" FontWeight="SemiBold"
                                        Foreground="{DynamicResource TextMutedBrush}" Margin="0,0,0,8" />
-                            <Border Background="{DynamicResource SurfaceBrush}"
-                                    BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1"
-                                    CornerRadius="8" Padding="12,10">
-                                <Grid>
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <TextBlock Text="&#xE8A5;" FontFamily="{DynamicResource IconFont}" FontSize="16"
-                                                   Foreground="{DynamicResource BrandBrush}" Margin="0,0,8,0" VerticalAlignment="Center" />
-                                        <TextBlock Text="{DynamicResource inSynced}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
-                                    </StackPanel>
-                                    <Button Style="{DynamicResource SecondaryButton}" Content="{DynamicResource inOpenDir}"
-                                            HorizontalAlignment="Right" Height="30" FontSize="11" Padding="10,0" />
-                                </Grid>
-                            </Border>
+                            <ItemsControl ItemsSource="{Binding DetailAttachments}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{DynamicResource SurfaceBrush}"
+                                                BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1"
+                                                CornerRadius="8" Padding="12,10" Margin="0,0,0,8">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <Border Grid.Column="0" Width="36" Height="36" CornerRadius="8"
+                                                        Background="{DynamicResource SurfaceAltBrush}" Margin="0,0,10,0">
+                                                    <TextBlock Text="{Binding Kind, Converter={StaticResource KindToGlyph}}" FontFamily="{StaticResource IconFont}" FontSize="16"
+                                                               Foreground="{DynamicResource BrandBrush}"
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                </Border>
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
+                                                               Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Text="{Binding SizeText}" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" Margin="0,1,0,0" />
+                                                </StackPanel>
+                                                <!-- 收件已保存 → 打开保存目录；发件 → 仅显示“已发送” -->
+                                                <Button Grid.Column="2" Style="{DynamicResource SecondaryButton}" Height="30" FontSize="11" Padding="10,0"
+                                                        Content="{DynamicResource inOpenDir}"
+                                                        Command="{Binding DataContext.OpenAttachmentCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        Visibility="{Binding IsIncomingSaved, Converter={StaticResource BoolToVis}}" />
+                                                <TextBlock Grid.Column="2" Text="{DynamicResource outgoingSent}" FontSize="11"
+                                                           Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center"
+                                                           Visibility="{Binding IsIncomingSaved, Converter={StaticResource InvBoolToVis}}" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
                         </StackPanel>
+                    </Border>
+
+                    <!-- 删除消息 -->
+                    <Border Grid.Row="3" Margin="0,16,0,0" BorderBrush="{DynamicResource BorderSubtleBrush}"
+                            BorderThickness="0,1,0,0" Padding="0,14,0,0">
+                        <Button Style="{DynamicResource SecondaryButton}" Content="{DynamicResource inDelete}"
+                                HorizontalAlignment="Right" Padding="14,6"
+                                Command="{Binding DeleteMessageCommand}" CommandParameter="{Binding SelectedInbox}" />
                     </Border>
                 </Grid>
             </Grid>

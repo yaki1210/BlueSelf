@@ -1,7 +1,10 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
-using System.Windows.Threading;
+using System.Windows;
+using Windows.Devices.Bluetooth;
+using Windows.Devices.Enumeration;
+using Windows.Networking.Sockets;
 using FileTransferApp.WinUI.Bluetooth;
 using FileTransferApp.WinUI.Bluetooth.Core;
 
@@ -10,14 +13,39 @@ namespace FileTransferApp.WinUI.ViewModels;
 /// <summary>Device connection state shown by the status dot.</summary>
 public enum DeviceStatus { Online, Connecting, Offline }
 
-/// <summary>A Bluetooth device displayed in the device column.</summary>
+/// <summary>A Bluetooth peer shown in the device column.</summary>
 public sealed class DeviceItem : ObservableObject
 {
     public required string Name { get; init; }
-    public required string SubLabel { get; init; }
     public ulong Address { get; init; }
+    /// <summary>Device icon kind (PC / tablet / phone) derived from the name, like Android.</summary>
+    public required string Kind { get; init; }
+
     private DeviceStatus _status;
-    public DeviceStatus Status { get => _status; set => Set(ref _status, value); }
+    public DeviceStatus Status
+    {
+        get => _status;
+        set { if (Set(ref _status, value)) OnPropertyChanged(nameof(StatusText)); }
+    }
+    /// <summary>Localized status text for the secondary label.</summary>
+    public string StatusText => _status switch
+    {
+        DeviceStatus.Online => "在线",
+        DeviceStatus.Connecting => "连接中",
+        _ => "离线"
+    };
+}
+
+/// <summary>A nearby device shown on the "add new device" page.</summary>
+public sealed class ScannedDeviceItem : ObservableObject
+{
+    public required string Name { get; init; }
+    public ulong Address { get; init; }
+    public bool IsPaired { get; init; }
+    /// <summary>Device icon kind (pc / tablet / phone), derived from the name.</summary>
+    public string Kind => MainViewModel.KindOfName(Name);
+    /// <summary>A short address suffix for display.</summary>
+    public string AddressText => (Address & 0xFFFFFFFF).ToString("X4");
 }
 
 /// <summary>A pending attachment chip in the composer.</summary>
@@ -27,6 +55,7 @@ public sealed class AttachmentItem : ObservableObject
     public required string SizeText { get; init; }
     public required string Kind { get; init; } // pdf / image / file
     public required string PathText { get; init; }
+    public long Size { get; init; }
 }
 
 /// <summary>A log line shown in the collapsible log area.</summary>
@@ -36,27 +65,66 @@ public sealed class LogEntry : ObservableObject
     public required string Message { get; init; }
 }
 
+/// <summary>An attachment attached to an inbox message (received saved file, or sent original path).</summary>
+public sealed class InboxAttachment : ObservableObject
+{
+    public required string Name { get; init; }
+    public required string SizeText { get; init; }
+    public required string Kind { get; init; } // pdf / image / file
+    /// <summary>On-disk file: for received attachments the saved path; for sent attachments the original path.</summary>
+    public required string Path { get; init; }
+    /// <summary>True for received (saved) attachments whose file may be deleted with the message.</summary>
+    public bool IsIncomingSaved { get; init; }
+}
+
 /// <summary>An entry in the inbox list.</summary>
 public sealed class InboxEntry : ObservableObject
 {
+    public DeviceItem? Peer { get; init; }
     public required string Device { get; init; }
     public required string Time { get; init; }
-    public required string Preview { get; init; }
-    public required string FileInfo { get; init; } // "" or "2 个文件"
-    public required bool IsUnread { get; init; }
+    public required string Content { get; set; }
+    public bool IsOutgoing { get; init; }
+
+    public ObservableCollection<InboxAttachment> Attachments { get; } = new();
+
+    private bool _isUnread;
+    public bool IsUnread { get => _isUnread; set => Set(ref _isUnread, value); }
+
+    /// <summary>Peer device icon kind (pc/tablet/phone) for the list avatar.</summary>
+    public string DeviceKind => MainViewModel.KindOfName(Device);
+
+    /// <summary>Preview line for the list (content first line or first attachment name).</summary>
+    public string Preview
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(Content)) return Content.Replace("\r", " ").Replace("\n", " ").Trim();
+            return Attachments.Count > 0 ? Attachments[0].Name : "";
+        }
+    }
+    /// <summary>Attachment badge text for the list.</summary>
+    public string FileInfo => Attachments.Count > 0 ? $"{Attachments.Count} 个文件" : "";
+    public bool HasAttachments => Attachments.Count > 0;
+
+    /// <summary>Raises notifications so the list text/badge update after attachments change.</summary>
+    public void NotifyAttachments()
+    {
+        OnPropertyChanged(nameof(Preview));
+        OnPropertyChanged(nameof(FileInfo));
+        OnPropertyChanged(nameof(HasAttachments));
+    }
 }
 
 /// <summary>
 /// Main UI state, wired to the real Bluetooth transfer pipeline.
-/// Listening is always on; picking a device connects to it; sending uses the
-/// live socket; inbound text/files surface in the inbox; progress feeds the
-/// third status column.
 /// </summary>
 public sealed class MainViewModel : ObservableObject
 {
     private readonly SynchronizationContext _ui = SynchronizationContext.Current ?? new SynchronizationContext();
     private readonly RfcommHost _host = new();
     private readonly TransferService _transfer;
+    private string _peerName = "远端设备";
     private long _lastBytes;
     private DateTime _lastSample = DateTime.MinValue;
 
@@ -64,12 +132,7 @@ public sealed class MainViewModel : ObservableObject
     {
         _transfer = new TransferService(SavePath);
         WireTransferEvents();
-        LocalName = Environment.MachineName;
-
-        Inbox.Add(new InboxEntry
-        {
-            Device = "系统", Time = "-", Preview = "等待接收消息。", FileInfo = "", IsUnread = false
-        });
+        LocalName = TransferService.LocalDeviceName();
 
         Log("BlueSelf 已启动，正在开启蓝牙监听…");
         _ = InitAsync();
@@ -79,7 +142,7 @@ public sealed class MainViewModel : ObservableObject
     public static MainViewModel Instance => _instance ??= new MainViewModel();
 
     // ---- App views ----
-    public enum AppView { Workspace, Inbox, Settings }
+    public enum AppView { Workspace, Inbox, Settings, AddDevice }
 
     private AppView _currentView = AppView.Workspace;
     public AppView CurrentView
@@ -92,14 +155,24 @@ public sealed class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(IsWorkspace));
         OnPropertyChanged(nameof(IsInbox));
         OnPropertyChanged(nameof(IsSettings));
+        OnPropertyChanged(nameof(IsAddDevice));
     }
     public bool IsWorkspace => _currentView == AppView.Workspace;
     public bool IsInbox => _currentView == AppView.Inbox;
     public bool IsSettings => _currentView == AppView.Settings;
+    public bool IsAddDevice => _currentView == AppView.AddDevice;
 
     public RelayCommandNoArg ShowWorkspaceCommand => new(() => CurrentView = AppView.Workspace);
     public RelayCommandNoArg ShowInboxCommand => new(() => CurrentView = AppView.Inbox);
     public RelayCommandNoArg ShowSettingsCommand => new(() => CurrentView = AppView.Settings);
+
+    /// <summary>Opens the add-device page and starts scanning.</summary>
+    public RelayCommandNoArg ShowAddDeviceCommand => new(() =>
+    {
+        CurrentView = AppView.AddDevice;
+        _ = EnsureListeningAsync();
+        StartScan();
+    });
 
     // ---- Bluetooth init / device column ----
     private async Task InitAsync()
@@ -108,36 +181,135 @@ public sealed class MainViewModel : ObservableObject
         {
             var saveDir = SavePath;
             Directory.CreateDirectory(Path.Combine(saveDir, "_staging"));
-            await _host.StartListeningAsync();
-            _host.IncomingConnected += socket => { _transfer.Attach(socket); Post(() => { IsListening = true; Log("有设备接入，连接已建立"); }); };
-            Post(() => Log("蓝牙监听已开启"));
         }
-        catch (Exception ex)
-        {
-            Post(() => Log($"开启监听失败: {ex.Message}"));
-        }
+        catch { }
+
+        // 先订阅再监听：避免订阅之前就有设备连入而丢失连接。
+        _host.IncomingConnected += OnIncomingConnected;
+
+        await EnsureListeningAsync();
         await RefreshDevicesAsync();
     }
 
-    private async Task RefreshDevicesAsync()
+    /// <summary>Handles a phone connecting into this PC, syncing the device column and current target.</summary>
+    private void OnIncomingConnected(StreamSocket socket)
     {
-        var devices = await Discovery.GetPairedDevicesAsync();
+        var addr = TryParseMacToUlong(socket.Information.RemoteHostName?.CanonicalName);
+        _transfer.Attach(socket, addr);
+
         Post(() =>
         {
-            Devices.Clear();
-            foreach (var d in devices)
+            _selectedAddress = addr ?? 0;
+            _peerName = "远端设备";
+            DeviceItem? match = null;
+
+            foreach (var d in Devices)
             {
-                Devices.Add(new DeviceItem
+                if (addr.HasValue && d.Address == addr.Value)
                 {
-                    Name = d.Name,
-                    SubLabel = "已配对",
-                    Address = d.Address,
-                    Status = d.Address == _selectedAddress ? DeviceStatus.Online : DeviceStatus.Offline
-                });
+                    d.Status = DeviceStatus.Online;
+                    match = d;
+                }
+                else
+                {
+                    d.Status = DeviceStatus.Offline; // 其余设备全部下线，避免"选择A却发到B"
+                }
             }
-            Log($"已发现 {Devices.Count} 台已配对设备");
+
+            if (match != null)
+            {
+                _peerName = match.Name;
+                _selectedDevice = match; // 直接赋值字段 + 通知，绕过 setter 避免触发重连
+                OnPropertyChanged(nameof(SelectedDevice));
+                OnPropertyChanged(nameof(HasSelectedDevice));
+                OnPropertyChanged(nameof(IsTargetRowVisible));
+                Log($"{match.Name} 已接入");
+            }
+            else
+            {
+                IsListening = true;
+                Log(addr.HasValue ? "远端设备已接入" : "有设备接入（未识别地址），连接已建立");
+            }
         });
     }
+
+    /// <summary>Parses a Bluetooth MAC ("AA:BB:CC:DD:EE:FF") into a ulong address, or null.</summary>
+    private static ulong? TryParseMacToUlong(string? mac)
+    {
+        if (string.IsNullOrWhiteSpace(mac)) return null;
+        var hex = mac.Replace(":", "").Replace("-", "").Trim();
+        if (hex.Length != 12) return null;
+        return ulong.TryParse(hex, System.Globalization.NumberStyles.HexNumber, null, out var v) ? v : null;
+    }
+
+    /// <summary>Ensures the inbound RFCOMM listener is running (self-heals if Bluetooth came up late).</summary>
+    public async Task EnsureListeningAsync()
+    {
+        if (_host.IsListening) return;
+        try
+        {
+            await _host.StartListeningAsync();
+            Post(() => { IsListening = true; Log("蓝牙监听已开启"); });
+        }
+        catch (Exception ex)
+        {
+            Post(() => Log($"开启监听失败: {ex.Message}（稍后会自动重试）"));
+        }
+    }
+
+    private bool _isRefreshing;
+    public async Task RefreshDevicesAsync()
+    {
+        if (_isRefreshing) return;
+        _isRefreshing = true;
+        try
+        {
+            await EnsureListeningAsync();
+            var devices = await Discovery.GetPairedDevicesAsync();
+            var targetAddr = SelectedDevice?.Address ?? _selectedAddress;
+            Post(() =>
+            {
+                Devices.Clear();
+                foreach (var d in devices)
+                {
+                    Devices.Add(new DeviceItem
+                    {
+                        Name = d.Name,
+                        Address = d.Address,
+                        Kind = KindOfName(d.Name),
+                        Status = d.Address == targetAddr ? DeviceStatus.Online : DeviceStatus.Offline
+                    });
+                }
+
+                // 恢复选中项：直接赋值字段 + 通知，绕过 setter 以免触发自动重连。
+                var match = Devices.FirstOrDefault(x => x.Address == targetAddr);
+                if (match != null)
+                {
+                    _selectedDevice = match;
+                    OnPropertyChanged(nameof(SelectedDevice));
+                    OnPropertyChanged(nameof(HasSelectedDevice));
+                    OnPropertyChanged(nameof(IsTargetRowVisible));
+                }
+                Log($"已发现 {Devices.Count} 台 BlueSelf 设备");
+            });
+        }
+        finally
+        {
+            _isRefreshing = false;
+        }
+    }
+
+    public RelayCommandNoArg RefreshDevicesCommand => new(() => _ = RefreshDevicesAsync());
+
+    /// <summary>Called when the main window regains focus (e.g. after pairing in Settings).</summary>
+    public void OnWindowActivated()
+    {
+        var now = DateTime.UtcNow;
+        if ((now - _lastActivated).TotalSeconds < 3) return; // 防抖
+        _lastActivated = now;
+        _ = RefreshDevicesAsync();
+    }
+    private DateTime _lastActivated = DateTime.MinValue;
 
     private ulong _selectedAddress;
     public ObservableCollection<DeviceItem> Devices { get; } = new();
@@ -151,12 +323,15 @@ public sealed class MainViewModel : ObservableObject
             if (Set(ref _selectedDevice, value))
             {
                 OnPropertyChanged(nameof(HasSelectedDevice));
+                OnPropertyChanged(nameof(IsTargetRowVisible));
                 ShowTargetHint = false;
                 if (_selectedDevice != null) _ = ConnectAsync(_selectedDevice);
             }
         }
     }
     public bool HasSelectedDevice => SelectedDevice != null;
+    /// <summary>True when the target-device row should be shown (a device is selected and no hint is visible).</summary>
+    public bool IsTargetRowVisible => SelectedDevice != null && !ShowTargetHint;
 
     private async Task ConnectAsync(DeviceItem device)
     {
@@ -166,14 +341,17 @@ public sealed class MainViewModel : ObservableObject
         {
             var socket = await RfcommHost.ConnectAsync(device.Address);
             _selectedAddress = device.Address;
-            _transfer.Attach(socket);
+            _peerName = device.Name;
+            _transfer.Attach(socket, device.Address);
+            // 清除其它设备的在线状态，仅保留当前连接设备在线。
+            foreach (var d in Devices) if (d.Address != device.Address) d.Status = DeviceStatus.Offline;
             device.Status = DeviceStatus.Online;
             Log($"已连接 {device.Name}");
         }
         catch (Exception ex)
         {
             device.Status = DeviceStatus.Offline;
-            Log($"连接 {device.Name} 失败: {ex.Message}（如未配对，请先在系统蓝牙设置中配对）");
+            Log($"连接 {device.Name} 失败: {ex.Message}");
         }
     }
 
@@ -181,20 +359,162 @@ public sealed class MainViewModel : ObservableObject
     private bool _isListening;
     public bool IsListening { get => _isListening; set => Set(ref _isListening, value); }
 
-    // 未选择设备时点了发送，才显示目标提示
     private bool _showTargetHint;
-    public bool ShowTargetHint { get => _showTargetHint; set => Set(ref _showTargetHint, value); }
-
-    public RelayCommandNoArg AddPairingCommand => new(() =>
+    public bool ShowTargetHint
     {
-        Log("请在 Windows 设置 → 蓝牙与其他设备中完成配对");
-        _ = Process.Start("ms-settings:bluetooth");
-    });
+        get => _showTargetHint;
+        set
+        {
+            if (Set(ref _showTargetHint, value)) OnPropertyChanged(nameof(IsTargetRowVisible));
+        }
+    }
+
+    /// <summary>Opens the add-device page（保留别名，供旧的按钮绑定使用）。</summary>
+    public RelayCommandNoArg AddPairingCommand => ShowAddDeviceCommand;
+
+    // ---- Add-device page: scan & connect ----
+    public ObservableCollection<ScannedDeviceItem> ScannedDevices { get; } = new();
+
+    private bool _isScanning;
+    public bool IsScanning { get => _isScanning; set { if (Set(ref _isScanning, value)) OnPropertyChanged(nameof(ScannedCountText)); } }
+    public string ScannedCountText => $"发现 {ScannedDevices.Count} 台设备";
+    private bool _isScanningRunning;
+
+    public RelayCommandNoArg StartScanCommand => new(StartScan);
+
+    private async void StartScan()
+    {
+        if (_isScanningRunning) return;
+        _isScanningRunning = true;
+        IsScanning = true;
+        Log("正在扫描附近设备…");
+        try
+        {
+            var items = await DeviceScanner.ScanAsync();
+            Post(() =>
+            {
+                ScannedDevices.Clear();
+                foreach (var s in items)
+                {
+                    ScannedDevices.Add(new ScannedDeviceItem
+                    {
+                        Name = s.Name,
+                        Address = s.Address,
+                        IsPaired = s.IsPaired
+                    });
+                }
+                OnPropertyChanged(nameof(ScannedCountText));
+                Log($"扫描完成，发现 {ScannedDevices.Count} 台设备");
+            });
+        }
+        catch (Exception ex)
+        {
+            Post(() => Log($"扫描失败: {ex.Message}"));
+        }
+        finally
+        {
+            Post(() => { IsScanning = false; });
+            _isScanningRunning = false;
+        }
+    }
+
+    private bool _isConnecting;
+    public RelayCommand ConnectAndAddCommand => new(p => _ = ConnectAndAddAsync(p as ScannedDeviceItem));
+
+    /// <summary>Pairs (if needed) then connects to a nearby device and adds it to the device column.</summary>
+    private async Task ConnectAndAddAsync(ScannedDeviceItem? item)
+    {
+        if (item == null || _isConnecting) return;
+        _isConnecting = true;
+        try
+        {
+            await EnsureListeningAsync();
+
+            var device = await BluetoothDevice.FromBluetoothAddressAsync(item.Address);
+            if (device == null) { Log("未找到该蓝牙设备，请重试扫描"); return; }
+
+            if (!device.DeviceInformation.Pairing.IsPaired)
+            {
+                Log($"正在与 {item.Name} 配对，请在两端确认…");
+                try
+                {
+                    var pairing = await device.DeviceInformation.Pairing.PairAsync();
+                    if (pairing != null &&
+                        pairing.Status != DevicePairingResultStatus.Paired &&
+                        pairing.Status != DevicePairingResultStatus.AlreadyPaired)
+                    {
+                        Log($"与 {item.Name} 配对失败: {pairing.Status}");
+                        return;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log($"与 {item.Name} 配对失败: {ex.Message}");
+                    return;
+                }
+            }
+
+            Log($"正在连接 {item.Name}…");
+            try
+            {
+                var socket = await RfcommHost.ConnectAsync(item.Address);
+                _selectedAddress = item.Address;
+                _peerName = item.Name;
+                _transfer.Attach(socket, item.Address);
+
+                // 其余设备全部下线。
+                foreach (var d in Devices) if (d.Address != item.Address) d.Status = DeviceStatus.Offline;
+
+                // 加入设备栏并标记为在线；设为发送目标。
+                var existing = Devices.FirstOrDefault(x => x.Address == item.Address);
+                if (existing != null)
+                {
+                    existing.Status = DeviceStatus.Online;
+                    _selectedDevice = existing;
+                }
+                else
+                {
+                    var added = new DeviceItem { Name = item.Name, Address = item.Address, Kind = KindOfName(item.Name), Status = DeviceStatus.Online };
+                    Devices.Add(added);
+                    _selectedDevice = added;
+                }
+                OnPropertyChanged(nameof(SelectedDevice));
+                OnPropertyChanged(nameof(HasSelectedDevice));
+                OnPropertyChanged(nameof(IsTargetRowVisible));
+
+                Log($"已连接并添加 {item.Name}");
+                CurrentView = AppView.Workspace;
+            }
+            catch (Exception ex)
+            {
+                Log($"连接 {item.Name} 失败: {ex.Message}（请确认手机端 App 已打开）");
+            }
+        }
+        finally
+        {
+            _isConnecting = false;
+        }
+    }
 
     // ---- Composer ----
     private string _text = string.Empty;
-    public string Text { get => _text; set => Set(ref _text, value); }
+    public string Text
+    {
+        get => _text;
+        set { if (Set(ref _text, value)) OnPropertyChanged(nameof(PendingSizeText)); }
+    }
     public ObservableCollection<AttachmentItem> Attachments { get; } = new();
+
+    /// <summary>Pending content info shown above the send button (text bytes + attachment bytes).</summary>
+    public string PendingSizeText
+    {
+        get
+        {
+            var textBytes = System.Text.Encoding.UTF8.GetByteCount(_text);
+            var fileBytes = Attachments.Sum(a => a.Size);
+            return $"{FormatBytes(textBytes + fileBytes)} · {_text.Length} 字符";
+        }
+    }
 
     public RelayCommandNoArg PasteCommand => new(() =>
     {
@@ -220,29 +540,39 @@ public sealed class MainViewModel : ObservableObject
                 Attachments.Add(new AttachmentItem
                 {
                     Name = fi.Name,
-                    SizeText = FormatSize(fi.Length),
-                    Kind = KindOf(fi.Name),
-                    PathText = fi.FullName
+                    SizeText = FormatBytes(fi.Length),
+                    Kind = KindOfExt(fi.Name),
+                    PathText = fi.FullName,
+                    Size = fi.Length
                 });
             }
         }
+        OnPropertyChanged(nameof(PendingSizeText));
         Log($"已添加 {dlg.FileNames.Length} 个附件");
+    }
+
+    /// <summary>Removes an attachment by reference from the composer.</summary>
+    public void RemoveAttachment(AttachmentItem item)
+    {
+        Attachments.Remove(item);
+        OnPropertyChanged(nameof(PendingSizeText));
     }
 
     public RelayCommandNoArg StartSendCommand => new(StartTransfer);
 
     private async void StartTransfer()
     {
-        var device = SelectedDevice;
-        if (device == null)
+        // 三合一校验：未选目标 / 未建立连接 / 所选设备与实际连接不一致 → 统一弹出目标提示。
+        var notSelected = SelectedDevice == null;
+        var notConnected = !_transfer.IsConnected;
+        var wrongTarget = !notSelected && !notConnected &&
+                           !(_transfer.ConnectedPeerAddress is ulong addr && addr == SelectedDevice!.Address);
+        if (notSelected || notConnected || wrongTarget)
         {
-            ShowTargetHint = true; // 未选设备时点了发送 → 显示提示
-            Log("请先在设备栏选择目标设备");
-            return;
-        }
-        if (!_transfer.IsConnected)
-        {
-            Log("尚未建立连接，请稍候或重新选择目标设备");
+            ShowTargetHint = true;
+            Log(notSelected ? "请先在设备栏选择要发送的目标设备"
+                : notConnected ? "尚未连接目标设备，请先在设备栏点击设备建立连接"
+                : "当前连接的不是所选设备，请重新在设备栏选择");
             return;
         }
         ShowTargetHint = false;
@@ -254,25 +584,25 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
         IsTransferring = true;
-        var sent = false;
+        var sentContent = Text;
+        var messageId = Guid.NewGuid().ToString("N");
         try
         {
-            if (hasText)
-            {
-                await _transfer.SendTextAsync(Text);
-                AddOutgoing(device.Name, Text, Attachments.Count);
-                sent = true;
-                Text = string.Empty;
-            }
+            // 与 Android 对齐：总是先发一条 TXT（即使空文本）在对端创建父消息，
+            // 文件用同一 messageId 作为 FILE_START.msgId 挂到该消息下。
+            await _transfer.SendTextAsync(sentContent, messageId);
             foreach (var att in Attachments.ToList())
             {
                 FileName = att.Name;
-                if (new FileInfo(att.PathText).Length > 20L * 1024 * 1024)
+                if (att.Size > 20L * 1024 * 1024)
                     Log("提示：此文件过大，蓝牙传输需较长时间");
-                await _transfer.SendFileAsync(att.PathText);
-                sent = true;
+                await _transfer.SendFileAsync(att.PathText, Guid.NewGuid().ToString("N"), messageId);
             }
-            if (sent) Attachments.Clear();
+            Text = string.Empty;
+            // 发件侧始终生成一条记录（文本/附件）
+            AddOutgoing(sentContent);
+            Attachments.Clear();
+            OnPropertyChanged(nameof(PendingSizeText));
         }
         catch (Exception ex)
         {
@@ -284,35 +614,209 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    /// <summary>Removes an attachment by reference from the composer.</summary>
-    public void RemoveAttachment(AttachmentItem item)
-    {
-        Attachments.Remove(item);
-    }
-
-    private void AddOutgoing(string device, string preview, int fileCount)
-    {
-        Inbox.Insert(0, new InboxEntry
-        {
-            Device = device,
-            Time = DateTime.Now.ToString("HH:mm"),
-            Preview = preview,
-            FileInfo = fileCount > 0 ? $"{fileCount} 个文件" : "",
-            IsUnread = false
-        });
-    }
-
     // ---- Inbox ----
     public ObservableCollection<InboxEntry> Inbox { get; } = new();
+    /// <summary>Tracks inbound entries by parent message id so a message's text and files merge into one row.</summary>
+    private readonly Dictionary<string, InboxEntry> _inboundByKey = new();
+
+    public int UnreadCount
+    {
+        get
+        {
+            lock (Inbox) { return Inbox.Count(e => e.IsUnread); }
+        }
+    }
+
+    private void InboxChanged() => OnPropertyChanged(nameof(UnreadCount));
+
     private InboxEntry? _selectedInbox;
     public InboxEntry? SelectedInbox
     {
         get => _selectedInbox;
-        set { if (Set(ref _selectedInbox, value)) OnPropertyChanged(nameof(DetailDevice)); }
+        set
+        {
+            if (Set(ref _selectedInbox, value))
+            {
+                NotifyDetail();
+                if (value != null && value.IsUnread)
+                {
+                    value.IsUnread = false;
+                    InboxChanged();
+                }
+            }
+        }
+    }
+    private void NotifyDetail()
+    {
+        OnPropertyChanged(nameof(DetailDevice));
+        OnPropertyChanged(nameof(DetailTime));
+        OnPropertyChanged(nameof(DetailContent));
+        OnPropertyChanged(nameof(DetailHasContent));
+        OnPropertyChanged(nameof(DetailIsOutgoing));
+        OnPropertyChanged(nameof(DetailAttachments));
+        OnPropertyChanged(nameof(DetailHasSavedAttachments));
+        OnPropertyChanged(nameof(DetailGlyph));
     }
     public string DetailDevice => SelectedInbox?.Device ?? "";
     public string DetailTime => SelectedInbox?.Time ?? "";
-    public string DetailPreview => SelectedInbox?.Preview ?? "";
+    public string DetailContent => SelectedInbox?.Content ?? "";
+    public bool DetailHasContent => !string.IsNullOrWhiteSpace(SelectedInbox?.Content);
+    public bool DetailIsOutgoing => SelectedInbox?.IsOutgoing == true;
+    public ObservableCollection<InboxAttachment> DetailAttachments => SelectedInbox?.Attachments ?? new();
+    public bool DetailHasSavedAttachments => SelectedInbox?.Attachments.Any(a => a.IsIncomingSaved) == true;
+    public string DetailGlyph => KindOfName(SelectedInbox?.Device ?? "");
+
+    /// <summary>Create an outgoing record after a send (always, text and/or files).</summary>
+    private void AddOutgoing(string? sentContent)
+    {
+        var entry = new InboxEntry
+        {
+            Peer = SelectedDevice,
+            Device = _peerName,
+            Time = DateTime.Now.ToString("HH:mm"),
+            Content = sentContent ?? "",
+            IsOutgoing = true,
+            IsUnread = false
+        };
+        foreach (var att in Attachments.ToList())
+        {
+            entry.Attachments.Add(new InboxAttachment
+            {
+                Name = att.Name,
+                SizeText = att.SizeText,
+                Kind = att.Kind,
+                Path = att.PathText,
+                IsIncomingSaved = false
+            });
+        }
+        entry.NotifyAttachments();
+        Inbox.Insert(0, entry);
+        InboxChanged();
+    }
+
+    private void HandleInboundText(string msgId, string content)
+    {
+        InboxEntry entry;
+        if (!string.IsNullOrWhiteSpace(msgId) && _inboundByKey.TryGetValue(msgId, out var existing))
+        {
+            // 同一消息的附件已先到，仅补写文本内容。
+            entry = existing;
+            entry.Content = content;
+            entry.NotifyAttachments();
+        }
+        else
+        {
+            entry = AddInbound(_peerName, content);
+            if (!string.IsNullOrWhiteSpace(msgId)) _inboundByKey[msgId] = entry;
+        }
+    }
+
+    private void HandleInboundFile(InboundFile file)
+    {
+        // 附件挂到对应父文本消息下；父消息未到时先建一条仅附件的占位，文本到达后再合并。
+        InboxEntry entry;
+        var key = file.ParentMessageId;
+        if (!string.IsNullOrWhiteSpace(key) && _inboundByKey.TryGetValue(key, out var existing))
+        {
+            entry = existing;
+        }
+        else
+        {
+            entry = AddInbound(_peerName, string.Empty);
+            if (!string.IsNullOrWhiteSpace(key)) _inboundByKey[key] = entry;
+        }
+
+        entry.Attachments.Add(new InboxAttachment
+        {
+            Name = file.Name,
+            SizeText = FormatBytes(file.Size),
+            Kind = KindOfExt(file.Name),
+            Path = file.SavePath,
+            IsIncomingSaved = true
+        });
+        entry.NotifyAttachments();
+    }
+
+    /// <summary>Creates an inbound entry (inserted at top of the inbox).</summary>
+    private InboxEntry AddInbound(string device, string content, bool isUnread = true)
+    {
+        var entry = new InboxEntry
+        {
+            Device = device,
+            Time = DateTime.Now.ToString("HH:mm"),
+            Content = content,
+            IsOutgoing = false,
+            IsUnread = isUnread
+        };
+        Inbox.Insert(0, entry);
+        InboxChanged();
+        return entry;
+    }
+
+    public RelayCommandNoArg MarkAllReadCommand => new(() =>
+    {
+        foreach (var e in Inbox) e.IsUnread = false;
+        InboxChanged();
+        Log("已全部标记为已读");
+    });
+
+    public RelayCommandNoArg ClearInboxCommand => new(() =>
+    {
+        if (Inbox.Count == 0) return;
+        if (MessageBox.Show("确定要清空全部消息记录吗？", "清空收件箱", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            return;
+        Inbox.Clear();
+        SelectedInbox = null;
+        InboxChanged();
+        Log("已清空收件箱");
+    });
+
+    public RelayCommand DeleteMessageCommand => new(_ => DeleteMessage(_ as InboxEntry));
+
+    private void DeleteMessage(InboxEntry? entry)
+    {
+        if (entry == null) return;
+        var hasSaved = entry.Attachments.Any(a => a.IsIncomingSaved);
+        var deleteFiles = false;
+        if (hasSaved)
+        {
+            var r = MessageBox.Show("该消息包含已保存的附件，是否同时删除已保存的附件文件？\n\n选“是”＝删记录并删除附件文件；选“否”＝仅删除消息记录。",
+                "删除消息", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+            if (r == MessageBoxResult.Cancel) return;
+            deleteFiles = r == MessageBoxResult.Yes;
+        }
+        else
+        {
+            if (MessageBox.Show("确定删除这条消息吗？", "删除消息", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK)
+                return;
+        }
+
+        if (deleteFiles)
+        {
+            foreach (var att in entry.Attachments.Where(a => a.IsIncomingSaved && a.Path != null))
+            {
+                try { if (File.Exists(att.Path)) File.Delete(att.Path); } catch { }
+            }
+        }
+        Inbox.Remove(entry);
+        if (SelectedInbox == entry) SelectedInbox = null;
+        InboxChanged();
+        Log("已删除消息");
+    }
+
+    /// <summary>Opens the attachment in Explorer (selects the file if it exists).</summary>
+    public RelayCommand OpenAttachmentCommand => new(p =>
+    {
+        if (p is not InboxAttachment att) return;
+        try
+        {
+            if (!string.IsNullOrEmpty(att.Path) && File.Exists(att.Path))
+            {
+                Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{att.Path}\"") { UseShellExecute = true });
+            }
+        }
+        catch { }
+    });
 
     // ---- Settings ----
     public string[] Languages { get; } = { "中文", "English" };
@@ -358,6 +862,16 @@ public sealed class MainViewModel : ObservableObject
     public bool IsTransferring { get => _isTransferring; set => Set(ref _isTransferring, value); }
     private string _fileName = "";
     public string FileName { get => _fileName; set => Set(ref _fileName, value); }
+    private TransferDir _currentDir = TransferDir.SEND;
+    /// <summary>Header badge text: "接收中" for receives, else "传输中".</summary>
+    public string TransferDirectionText => _currentDir == TransferDir.RECEIVE ? "接收中" : "传输中";
+    /// <summary>Small action label: "正在接收" for receives, else "正在传输".</summary>
+    public string TransferActionText => _currentDir == TransferDir.RECEIVE ? "正在接收" : "正在传输";
+    private void NotifyTransferDirection()
+    {
+        OnPropertyChanged(nameof(TransferDirectionText));
+        OnPropertyChanged(nameof(TransferActionText));
+    }
     private double _progress;
     public double Progress { get => _progress; set => Set(ref _progress, value); }
     private string _percentText = "0%";
@@ -370,6 +884,9 @@ public sealed class MainViewModel : ObservableObject
     private void ResetTransferUi()
     {
         IsTransferring = false;
+        FileName = "";
+        _currentDir = TransferDir.SEND;
+        NotifyTransferDirection();
         Progress = 0;
         PercentText = "0%";
         InstantRate = "0.0 KB/s";
@@ -389,33 +906,46 @@ public sealed class MainViewModel : ObservableObject
     // ---- Transfer event wiring ----
     private void WireTransferEvents()
     {
-        _transfer.TextReceived += content =>
-            Post(() => AddInbound("接收文本", content));
+        _transfer.TextReceived += (id, content) =>
+            Post(() => HandleInboundText(id, content));
 
         _transfer.FileReceived += file =>
-            Post(() => AddInbound("接收文件", $"收到文件 {file.Name}（{FormatSize(file.Size)}） → {file.SavePath}", needFileInfo: true));
+            Post(() => HandleInboundFile(file));
 
         _transfer.Progress += p => Post(() => ApplyProgress(p));
 
+        // 接收开始：状态面板显示本次接收的文件名（配合方向"接收中"）。
+        _transfer.ReceiveStarted += name => Post(() => FileName = name);
+
+        // 双方向（发送/接收）结束均收起传输 UI，避免任一方向挂起导致面板卡"传输中"。
+        _transfer.TransferCompleted += dir => Post(() => ResetTransferUi());
         _transfer.Info += msg => Post(() => Log(msg));
         _transfer.LogError += msg => Post(() => Log(msg));
-        _transfer.Disconnected += () => Post(() => Log("连接已断开"));
+        _transfer.Disconnected += OnDisconnected;
     }
 
-    private void AddInbound(string device, string preview, bool needFileInfo = false, string? deviceName = null)
+    /// <summary>On disconnect, mark every device offline so the column reflects reality and
+    /// selecting the same device again actually triggers a reconnection.</summary>
+    private void OnDisconnected()
     {
-        Inbox.Insert(0, new InboxEntry
+        Post(() =>
         {
-            Device = deviceName ?? device,
-            Time = DateTime.Now.ToString("HH:mm"),
-            Preview = preview,
-            FileInfo = needFileInfo ? "1 个文件" : "",
-            IsUnread = true
+            Log("连接已断开");
+            _selectedAddress = 0;
+            foreach (var d in Devices)
+            {
+                if (d.Status != DeviceStatus.Offline) d.Status = DeviceStatus.Offline;
+            }
         });
     }
 
     private void ApplyProgress(TransferProgress p)
     {
+        if (_currentDir != p.Dir)
+        {
+            _currentDir = p.Dir;
+            NotifyTransferDirection();
+        }
         if (!IsTransferring)
         {
             IsTransferring = true;
@@ -449,7 +979,7 @@ public sealed class MainViewModel : ObservableObject
             action();
     }
 
-    // ---- Formatting helpers ----
+    // ---- Formatting / classification helpers ----
     public static string FormatBytes(long bytes) => bytes switch
     {
         < 1024 => $"{bytes} B",
@@ -458,9 +988,15 @@ public sealed class MainViewModel : ObservableObject
         _ => $"{bytes / 1024.0 / 1024.0 / 1024.0:0.##} GB"
     };
 
-    private static string FormatSize(long bytes) => FormatBytes(bytes);
+    /// <summary>Device icon kind from a device name (PC/tablet/phone), mirrors Android.</summary>
+    public static string KindOfName(string name)
+    {
+        if (name.Contains("电脑", StringComparison.Ordinal) || name.Contains("Windows", StringComparison.OrdinalIgnoreCase)) return "pc";
+        if (name.Contains("平板", StringComparison.Ordinal) || name.Contains("iPad", StringComparison.OrdinalIgnoreCase)) return "tablet";
+        return "phone";
+    }
 
-    private static string KindOf(string name)
+    private static string KindOfExt(string name)
     {
         var ext = Path.GetExtension(name).ToLowerInvariant();
         return ext switch

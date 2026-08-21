@@ -25,6 +25,14 @@ interface MessageDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessage(message: MessageEntity)
 
+    /** Inserts a message but ignores conflicts (used to create a parent placeholder before file rows). */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertMessageIgnore(message: MessageEntity)
+
+    /** Fetches a message once by id (used to check parent existence before inserting file rows). */
+    @Query("SELECT * FROM messages WHERE id = :id LIMIT 1")
+    suspend fun getMessageByIdOnce(id: String): MessageEntity?
+
     @Update
     suspend fun updateMessage(message: MessageEntity)
 

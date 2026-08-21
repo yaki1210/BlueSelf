@@ -2,6 +2,7 @@ package com.example.ui.viewmodel
 
 import android.app.Application
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.R
@@ -34,6 +35,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.security.MessageDigest
 import java.util.UUID
@@ -60,6 +63,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val appContext: Application
         get() = getApplication()
+
+    /** Serializes all receive-side DB writes so concurrent receive coroutines never
+     * clobber each other (a whole-row @Update with a stale snapshot overwrites a fresh
+     * COMPLETE status back to RECEIVING). */
+    private val receiveDbLock = Mutex()
 
     val savedDevices: StateFlow<List<DeviceEntity>> = deviceRepository.allDevices
         .stateIn(
@@ -145,7 +153,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             bluetoothManager.incomingMessages.collect { packet ->
                 val entity = MessageProtocol.packetToEntity(packet, isOutgoing = false)
-                messageRepository.saveMessage(entity)
+                withContext(Dispatchers.IO) {
+                    receiveDbLock.withLock { messageRepository.saveMessage(entity) }
+                }
                 _snackbarEvent.emit(
                     appContext.getString(R.string.snackbar_received_from, packet.senderName)
                 )
@@ -170,27 +180,54 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun observeFileStarts() {
         viewModelScope.launch {
             bluetoothManager.fileTransfer.fileStarts.collect { start: FileStart ->
-                val staging = ReceivedFileManager.stagingFile(appContext, start.id)
-                val existing = messageRepository.getFileById(start.id)
-                if (existing == null) {
-                    messageRepository.saveFile(
-                        FileEntity(
-                            id = start.id,
-                            messageId = start.msgId,
-                            fileName = start.name,
-                            mimeType = start.mime,
-                            fileSize = start.size,
-                            md5 = start.md5,
-                            totalChunks = start.totalChunks,
-                            chunkSize = start.chunkSize,
-                            receivedBytes = 0,
-                            stagingPath = staging.absolutePath,
-                            status = "RECEIVING",
-                            isOutgoing = false,
-                            sortOrder = (messageRepository.getFilesForMessageOnce(start.msgId).maxOfOrNull { it.sortOrder } ?: -1) + 1,
-                            createdAt = System.currentTimeMillis()
-                        )
-                    )
+                Log.i(TAG, "recv START msgId=${start.msgId} fileId=${start.id} name=${start.name} size=${start.size}")
+                try {
+                    withContext(Dispatchers.IO) {
+                        receiveDbLock.withLock {
+                            // 父消息可能尚未落库（TXT 与 FILE_START 并发到达）。补一个占位父消息，
+                            // 避免 FileEntity 的外键约束失败。真实 TXT 到达后会就地覆盖 content。
+                            if (messageRepository.getMessageByIdOnce(start.msgId) == null) {
+                                val active = bluetoothManager.activeDevice.value
+                                messageRepository.saveMessage(
+                                    MessageEntity(
+                                        id = start.msgId,
+                                        senderDeviceId = active?.id ?: "remote",
+                                        senderDeviceName = active?.name ?: "远端设备",
+                                        receiverDeviceId = "local",
+                                        receiverDeviceName = "This Device",
+                                        content = "",
+                                        createdAt = System.currentTimeMillis(),
+                                        messageType = MessageProtocol.TYPE_FILE
+                                    )
+                                )
+                            }
+                            val staging = ReceivedFileManager.stagingFile(appContext, start.id)
+                            val existing = messageRepository.getFileById(start.id)
+                            if (existing == null) {
+                                messageRepository.saveFile(
+                                    FileEntity(
+                                        id = start.id,
+                                        messageId = start.msgId,
+                                        fileName = start.name,
+                                        mimeType = start.mime,
+                                        fileSize = start.size,
+                                        md5 = start.md5,
+                                        totalChunks = start.totalChunks,
+                                        chunkSize = start.chunkSize,
+                                        receivedBytes = 0,
+                                        stagingPath = staging.absolutePath,
+                                        status = "RECEIVING",
+                                        isOutgoing = false,
+                                        sortOrder = (messageRepository.getFilesForMessageOnce(start.msgId).maxOfOrNull { it.sortOrder } ?: -1) + 1,
+                                        createdAt = System.currentTimeMillis()
+                                    )
+                                )
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    // 打印真实错误，避免静默吞掉导致状态不收敛。
+                    Log.e(TAG, "recv START insert failed", e)
                 }
             }
         }
@@ -200,21 +237,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun observeFileResults() {
         viewModelScope.launch {
             bluetoothManager.fileTransfer.results.collect { result: TransferResult ->
-                val file = messageRepository.getFileById(result.fileId) ?: return@collect
-                val newStatus = if (result.success && result.md5Match) "COMPLETE" else "FAILED"
-                messageRepository.updateFile(
-                    file.copy(
-                        status = newStatus,
-                        receivedBytes = result.totalBytes
-                    )
-                )
-                if (!result.success) {
-                    ReceivedFileManager.deleteStaging(appContext, result.fileId)
-                }
-                if (result.success) {
-                    _snackbarEvent.emit(
-                        appContext.getString(R.string.snackbar_file_received, file.fileName)
-                    )
+                Log.i(TAG, "recv RESULT fileId=${result.fileId} success=${result.success} md5Match=${result.md5Match} bytes=${result.totalBytes} err=${result.error}")
+                try {
+                    withContext(Dispatchers.IO) {
+                        receiveDbLock.withLock {
+                            val file = messageRepository.getFileById(result.fileId)
+                            if (file == null) {
+                                Log.w(TAG, "recv RESULT: file not found, skipping; ${result.fileId}")
+                                return@withLock
+                            }
+                            val newStatus = if (result.success && result.md5Match) "COMPLETE" else "FAILED"
+                            // 定向更新 status+bytes，绝不使用整行旧快照覆盖新状态。
+                            messageRepository.updateFileStatus(result.fileId, newStatus, result.totalBytes)
+                            if (!result.success) {
+                                ReceivedFileManager.deleteStaging(appContext, result.fileId)
+                            }
+                        }
+                    }
+                    if (result.success) {
+                        val file = messageRepository.getFileById(result.fileId)
+                        if (file != null) {
+                            _snackbarEvent.emit(
+                                appContext.getString(R.string.snackbar_file_received, file.fileName)
+                            )
+                        }
+                    }
+                } catch (e: Exception) {
+                    // 打印真实错误，避免状态不收敛被静默吞掉。
+                    Log.e(TAG, "recv RESULT finalize failed", e)
                 }
             }
         }
@@ -234,15 +284,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     .filter { it.direction == TransferDirection.RECEIVE }
                     .filter { it.totalBytes > 0 }
                     .forEach { p ->
-                        val file = messageRepository.getFileById(p.fileId) ?: return@forEach
-                        if (file.status != "RECEIVING") return@forEach
-                        if (p.bytesDone == file.receivedBytes) return@forEach
-                        // Throttle DB writes to ~5/s while still updating on completion chunks.
-                        if (p.fraction >= 1f || now - lastWrite >= 200L) {
-                            lastWrite = now
-                            messageRepository.updateFile(
-                                file.copy(receivedBytes = p.bytesDone)
-                            )
+                        try {
+                            withContext(Dispatchers.IO) {
+                                receiveDbLock.withLock {
+                                    val file = messageRepository.getFileById(p.fileId) ?: return@withLock
+                                    if (file.status != "RECEIVING") return@withLock
+                                    if (p.bytesDone == file.receivedBytes) return@withLock
+                                    // Throttle DB writes to ~5/s while still updating on completion chunks.
+                                    if (p.fraction >= 1f || now - lastWrite >= 200L) {
+                                        lastWrite = now
+                                        // 只更新 receivedBytes，绝不触碰 status（避免覆盖 COMPLETE）。
+                                        messageRepository.updateFileReceivedBytes(p.fileId, p.bytesDone)
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "recv PROGRESS update failed", e)
                         }
                     }
             }
@@ -588,5 +645,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         // Warning threshold: files above this size are allowed but flagged as slow to transfer.
         private const val MAX_FILE_SIZE_BYTES = 20L * 1024 * 1024
+        private const val TAG = "BlueSelfRecv"
     }
 }

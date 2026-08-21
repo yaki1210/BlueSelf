@@ -11,6 +11,8 @@
 
     <s:String x:Key="wsPairedTitle">Paired devices</s:String>
     <s:String x:Key="wsAddPair">Pair a device</s:String>
+    <s:String x:Key="wsAddDevice">Add new device</s:String>
+    <s:String x:Key="wsRefresh">Refresh devices</s:String>
 
     <s:String x:Key="wsTargetHint">Select a target device on the left</s:String>
     <s:String x:Key="wsSendTo">To: </s:String>
@@ -30,9 +32,16 @@
     <s:String x:Key="inEmptySub">Received text and files will be shown here</s:String>
     <s:String x:Key="inRecvTime">Time: </s:String>
     <s:String x:Key="inBody">Message</s:String>
-    <s:String x:Key="inFiles">Received files</s:String>
+    <s:String x:Key="inFiles">Attachments</s:String>
     <s:String x:Key="inSynced">Saved to local downloads</s:String>
     <s:String x:Key="inOpenDir">Open folder</s:String>
+    <s:String x:Key="inMarkAllRead">Mark all read</s:String>
+    <s:String x:Key="inClear">Clear</s:String>
+    <s:String x:Key="inDelete">Delete message</s:String>
+    <s:String x:Key="inNoContent">No text content</s:String>
+    <s:String x:Key="outgoing">Sent</s:String>
+    <s:String x:Key="incoming">Received</s:String>
+    <s:String x:Key="outgoingSent">Sent</s:String>
 
     <s:String x:Key="stPref">Preferences</s:String>
     <s:String x:Key="stGeneral">General &amp; Appearance</s:String>
@@ -41,5 +50,15 @@
     <s:String x:Key="stStorage">Transfer &amp; Storage</s:String>
     <s:String x:Key="stSavePath">Received files folder</s:String>
     <s:String x:Key="stChange">Change</s:String>
+
+    <!-- Add new device -->
+    <s:String x:Key="adTitle">Add new device</s:String>
+    <s:String x:Key="adScanning">Scanning for nearby devices…</s:String>
+    <s:String x:Key="adScanDone">Scan complete</s:String>
+    <s:String x:Key="adFoundCount">Found {0} devices</s:String>
+    <s:String x:Key="adEmpty">No devices found. Make sure Bluetooth is on.</s:String>
+    <s:String x:Key="adConnectAdd">Connect &amp; add</s:String>
+    <s:String x:Key="adPaired">Paired</s:String>
+    <s:String x:Key="adBack">Back</s:String>
 
 </ResourceDictionary>

@@ -6,6 +6,48 @@ using FileTransferApp.WinUI.ViewModels;
 
 namespace FileTransferApp.WinUI.UI;
 
+/// <summary>Converts a device kind ("pc"/"tablet"/"phone", derived from the peer name)
+/// to a Segoe MDL2 glyph, mirroring Android's per-device sender icon.</summary>
+public sealed class DeviceKindToGlyphConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        var kind = value?.ToString() ?? "";
+        return kind switch
+        {
+            "pc" => "\uE968",     // Computer
+            "tablet" => "\uE970", // Tablet
+            _ => "\uE8EA"         // CellPhone
+        };
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>Converts a count to Visibility (count &gt; 0 → Visible).</summary>
+public sealed class CountToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        => value is int n && n > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>Converts the children count of an IEnumerable (e.g. an ObservableCollection) to Visibility.</summary>
+public sealed class HasItemsToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        var any = value is System.Collections.ICollection c && c.Count > 0;
+        return any ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
 /// <summary>Converts a DeviceStatus to a status-dot brush.</summary>
 public sealed class StatusToBrushConverter : IValueConverter
 {
