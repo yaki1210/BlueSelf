@@ -1,0 +1,70 @@
+<UserControl x:Class="FileTransferApp.WinUI.UI.Views.InboxView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:converters="clr-namespace:FileTransferApp.WinUI.UI">
+    <UserControl.Resources>
+        <converters:BoolToVisibilityConverter x:Key="Bean" />
+        <!-- 未读红点 -->
+        <Style x:Key="UnreadDot" TargetType="Ellipse">
+            <Setter Property="Width" Value="9" />
+            <Setter Property="Height" Value="9" />
+            <Setter Property="Fill" Value="#E8463A" />
+            <Setter Property="Visibility" Value="Visible" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsUnread}" Value="False">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+    <Grid Margin="18,12,18,10">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="14" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- 左：消息列表 -->
+        <Border Grid.Column="0" Background="#EFEFF2" CornerRadius="12" Padding="8">
+            <ListBox ItemsSource="{Binding Inbox}" SelectedItem="{Binding SelectedInbox}"
+                     Background="Transparent" BorderThickness="0">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Border CornerRadius="10" Padding="12,10" Margin="0,0,0,6" Background="#F7F7F8">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding Device}" FontWeight="SemiBold" Foreground="#171717" />
+                                    <Ellipse Style="{StaticResource UnreadDot}" Margin="8,0,0,0"
+                                             VerticalAlignment="Center" />
+                                </StackPanel>
+                                <TextBlock Text="{Binding Preview}" FontSize="13" Foreground="#52525B"
+                                           TextTrimming="CharacterEllipsis" Margin="0,3,0,0" />
+                                <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                                    <TextBlock Text="{Binding Time}" FontSize="11" Foreground="Gray" />
+                                    <TextBlock Text="{Binding FileInfo}" FontSize="11" Foreground="#4B3FE3"
+                                               Margin="8,0,0,0" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Border>
+
+        <!-- 右：详情 -->
+        <Border Grid.Column="2" Background="#F7F7F8" CornerRadius="12" Padding="18">
+            <StackPanel>
+                <TextBlock Text="消息详情" FontSize="15" FontWeight="SemiBold" Foreground="#171717" />
+                <TextBlock Text="{Binding DetailDevice}" FontSize="14" Foreground="#52525B" Margin="0,10,0,0" />
+                <TextBlock Text="{Binding DetailTime}" FontSize="12" Foreground="Gray" Margin="0,2,0,0" />
+                <Border Background="#FFFFFF" CornerRadius="10" Padding="12" Margin="0,14,0,0"
+                        BorderBrush="#33000000" BorderThickness="1">
+                    <TextBlock Text="{Binding DetailPreview}" FontSize="14" Foreground="#171717"
+                               TextWrapping="Wrap" />
+                </Border>
+                <TextBlock Text="附件" FontSize="13" FontWeight="SemiBold" Foreground="#171717" Margin="0,16,0,4" />
+                <TextBlock Text="（占位：无附件数据）" FontSize="12" Foreground="Gray" Opacity="0.7" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

@@ -1,0 +1,24 @@
+<UserControl x:Class="FileTransferApp.WinUI.UI.Controls.TransferStatusPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Border Background="#F7F7F8" BorderBrush="#33000000" BorderThickness="1" CornerRadius="12" Padding="14">
+        <StackPanel>
+            <TextBlock Text="实时传输详情" FontSize="13" FontWeight="SemiBold" Foreground="#1A1759" />
+
+            <TextBlock Text="当前文件" FontSize="11" Foreground="Gray" Margin="0,12,0,2" />
+            <TextBlock Text="{Binding FileName}" FontSize="14" FontWeight="SemiBold" Foreground="#171717"
+                       TextTrimming="CharacterEllipsis" MaxWidth="150" />
+
+            <!-- 进度条 + 百分比 -->
+            <ProgressBar Minimum="0" Maximum="100" Value="{Binding Progress}"
+                         Height="8" Margin="0,8,0,4" Foreground="#4B3FE3" Background="#EDEDF0" />
+            <TextBlock Text="{Binding PercentText}" FontSize="12" Foreground="#4B3FE3" HorizontalAlignment="Right" />
+
+            <TextBlock Text="瞬时速率" FontSize="11" Foreground="Gray" Margin="0,10,0,2" />
+            <TextBlock Text="{Binding InstantRate}" FontSize="22" FontWeight="Bold" Foreground="#171717" />
+
+            <TextBlock Text="累计平均" FontSize="11" Foreground="Gray" Margin="0,10,0,2" />
+            <TextBlock Text="{Binding AvgMbps}" FontSize="16" FontWeight="SemiBold" Foreground="#4B3FE3" />
+        </StackPanel>
+    </Border>
+</UserControl>

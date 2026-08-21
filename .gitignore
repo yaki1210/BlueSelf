@@ -20,3 +20,7 @@ debug.keystore
 /.robo-init.gradle
 /.trae
 /connect_error.png
+
+# Windows app build output
+windows/**/bin/
+windows/**/obj/

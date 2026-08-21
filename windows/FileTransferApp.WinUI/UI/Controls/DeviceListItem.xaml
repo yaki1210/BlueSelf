@@ -1,0 +1,19 @@
+<UserControl x:Class="FileTransferApp.WinUI.UI.Controls.DeviceListItem"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:converters="clr-namespace:FileTransferApp.WinUI.UI">
+    <UserControl.Resources>
+        <converters:StatusToBrushConverter x:Key="StatusToBrush" />
+    </UserControl.Resources>
+    <Border CornerRadius="10" Background="Transparent" Padding="10,8">
+        <StackPanel>
+            <StackPanel Orientation="Horizontal">
+                <Ellipse Width="9" Height="9" VerticalAlignment="Center"
+                         Fill="{Binding Status, Converter={StaticResource StatusToBrush}}" />
+                <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" Foreground="#171717"
+                           Margin="8,0,0,0" />
+            </StackPanel>
+            <TextBlock Text="{Binding SubLabel}" FontSize="11" Foreground="Gray" Margin="17,2,0,0" />
+        </StackPanel>
+    </Border>
+</UserControl>
