@@ -13,6 +13,9 @@
     <s:String x:Key="wsAddPair">Pair a device</s:String>
     <s:String x:Key="wsAddDevice">Add new device</s:String>
     <s:String x:Key="wsRefresh">Refresh devices</s:String>
+    <s:String x:Key="statOnline">Online</s:String>
+    <s:String x:Key="statConnecting">Connecting</s:String>
+    <s:String x:Key="statOffline">Offline</s:String>
 
     <s:String x:Key="wsTargetHint">Select a target device on the left</s:String>
     <s:String x:Key="wsSendTo">To: </s:String>
@@ -21,6 +24,7 @@
     <s:String x:Key="btnPaste">Paste</s:String>
     <s:String x:Key="btnAttach">Add files</s:String>
     <s:String x:Key="btnSend">Send</s:String>
+    <s:String x:Key="unitChar">chars</s:String>
 
     <s:String x:Key="tpTitle">Live transfer</s:String>
     <s:String x:Key="tpCurrent">Current file</s:String>

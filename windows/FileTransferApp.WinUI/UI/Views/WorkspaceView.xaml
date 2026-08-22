@@ -32,10 +32,6 @@
                     <TextBlock Text="{DynamicResource wsPairedTitle}" FontSize="12" FontWeight="SemiBold"
                                Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                        <Border Background="{DynamicResource SurfaceAltBrush}" CornerRadius="10" Padding="6,1" Margin="0,0,6,0">
-                            <TextBlock Text="{Binding Devices.Count, StringFormat='{}{0} 台'}" FontSize="11"
-                                       Foreground="{DynamicResource TextSecondaryBrush}" FontWeight="Medium" />
-                        </Border>
                         <Button Style="{StaticResource IconButton}" Command="{Binding RefreshDevicesCommand}"
                                 Content="&#xE72C;" ToolTip="{DynamicResource wsRefresh}" Width="26" Height="26" FontSize="12" />
                     </StackPanel>

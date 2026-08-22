@@ -28,12 +28,22 @@ public sealed class DeviceItem : ObservableObject
         set { if (Set(ref _status, value)) OnPropertyChanged(nameof(StatusText)); }
     }
     /// <summary>Localized status text for the secondary label.</summary>
-    public string StatusText => _status switch
+    public string StatusText
     {
-        DeviceStatus.Online => "在线",
-        DeviceStatus.Connecting => "连接中",
-        _ => "离线"
-    };
+        get
+        {
+            var key = _status switch
+            {
+                DeviceStatus.Online => "statOnline",
+                DeviceStatus.Connecting => "statConnecting",
+                _ => "statOffline"
+            };
+            return MainViewModel.Loc(key, "离线");
+        }
+    }
+
+    /// <summary>Re-queries the localized status text (called when the UI language changes).</summary>
+    public void NotifyStatusText() => OnPropertyChanged(nameof(StatusText));
 }
 
 /// <summary>A nearby device shown on the "add new device" page.</summary>
@@ -161,6 +171,10 @@ public sealed class MainViewModel : ObservableObject
 
     private static MainViewModel? _instance;
     public static MainViewModel Instance => _instance ??= new MainViewModel();
+
+    /// <summary>Looks up a UI string from the current language resource dictionary.</summary>
+    internal static string Loc(string key, string fallback)
+        => System.Windows.Application.Current?.TryFindResource(key) as string ?? fallback;
 
     // ---- App views ----
     public enum AppView { Workspace, Inbox, Settings, AddDevice }
@@ -414,8 +428,7 @@ public sealed class MainViewModel : ObservableObject
     public ObservableCollection<ScannedDeviceItem> ScannedDevices { get; } = new();
 
     private bool _isScanning;
-    public bool IsScanning { get => _isScanning; set { if (Set(ref _isScanning, value)) OnPropertyChanged(nameof(ScannedCountText)); } }
-    public string ScannedCountText => $"发现 {ScannedDevices.Count} 台设备";
+    public bool IsScanning { get => _isScanning; set => Set(ref _isScanning, value); }
     private bool _isScanningRunning;
 
     public RelayCommandNoArg StartScanCommand => new(StartScan);
@@ -441,7 +454,6 @@ public sealed class MainViewModel : ObservableObject
                         IsPaired = s.IsPaired
                     });
                 }
-                OnPropertyChanged(nameof(ScannedCountText));
                 Log($"扫描完成，发现 {ScannedDevices.Count} 台设备");
             });
         }
@@ -550,7 +562,7 @@ public sealed class MainViewModel : ObservableObject
         {
             var textBytes = System.Text.Encoding.UTF8.GetByteCount(_text);
             var fileBytes = Attachments.Sum(a => a.Size);
-            return $"{FormatBytes(textBytes + fileBytes)} · {_text.Length} 字符";
+            return $"{FormatBytes(textBytes + fileBytes)} · {_text.Length} {Loc("unitChar", "字符")}";
         }
     }
 
@@ -862,7 +874,17 @@ public sealed class MainViewModel : ObservableObject
     public string Language
     {
         get => _language;
-        set { if (Set(ref _language, value)) { App.ApplyLanguage(value); SaveSettings(); } }
+        set
+        {
+            if (Set(ref _language, value))
+            {
+                App.ApplyLanguage(value);
+                SaveSettings();
+                // 刷新依赖语言字符串的 UI（设备状态、待发大小）。
+                foreach (var d in Devices) d.NotifyStatusText();
+                OnPropertyChanged(nameof(PendingSizeText));
+            }
+        }
     }
     public string[] Themes { get; } = { "跟随系统", "亮色", "暗色" };
     private string _theme = "跟随系统";

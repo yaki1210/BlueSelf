@@ -106,12 +106,8 @@
             </Grid>
         </Border>
 
-        <!-- 设备计数 -->
-        <TextBlock Grid.Row="2" Text="{Binding ScannedCountText}" FontSize="13" FontWeight="Bold"
-                   Foreground="{DynamicResource TextPrimaryBrush}" Margin="2,20,0,10" />
-
         <!-- 设备列表 -->
-        <Grid Grid.Row="3">
+        <Grid Grid.Row="2">
             <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                           Visibility="{Binding ScannedDevices, Converter={StaticResource HasItemsToVis}}">
                 <ItemsControl ItemsSource="{Binding ScannedDevices}">

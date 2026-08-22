@@ -15,6 +15,9 @@
     <s:String x:Key="wsAddPair">添加配对设备</s:String>
     <s:String x:Key="wsAddDevice">添加新设备</s:String>
     <s:String x:Key="wsRefresh">刷新设备列表</s:String>
+    <s:String x:Key="statOnline">在线</s:String>
+    <s:String x:Key="statConnecting">连接中</s:String>
+    <s:String x:Key="statOffline">离线</s:String>
 
     <!-- 编辑器 -->
     <s:String x:Key="wsTargetHint">请在左侧选择要发送的目标设备</s:String>
@@ -24,6 +27,7 @@
     <s:String x:Key="btnPaste">粘贴</s:String>
     <s:String x:Key="btnAttach">添加附件</s:String>
     <s:String x:Key="btnSend">发送到设备</s:String>
+    <s:String x:Key="unitChar">字符</s:String>
 
     <!-- 实时传输详情 -->
     <s:String x:Key="tpTitle">实时传输详情</s:String>
