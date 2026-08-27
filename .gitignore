@@ -27,6 +27,9 @@ my-upload-key.jks
 windows/**/bin/
 windows/**/obj/
 
+# Release artifacts
+/dist/
+
 # AI assistant metadata (local tooling, not project source)
 .agents/
 .openclaw/
