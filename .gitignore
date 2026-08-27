@@ -24,3 +24,14 @@ debug.keystore
 # Windows app build output
 windows/**/bin/
 windows/**/obj/
+
+# AI assistant metadata (local tooling, not project source)
+.agents/
+.openclaw/
+memory/
+AGENTS.md
+HEARTBEAT.md
+IDENTITY.md
+SOUL.md
+TOOLS.md
+USER.md

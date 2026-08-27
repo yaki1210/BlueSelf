@@ -818,17 +818,21 @@ public sealed class MainViewModel : ObservableObject
         IsTransferring = true;
         var sentContent = Text;
         var messageId = Guid.NewGuid().ToString("N");
+        ConnectionLog.Write("Send requested",
+            $"target={SelectedDevice?.Name}, state={_transfer.State}, files={Attachments.Count}");
         try
         {
             // 与 Android 对齐：总是先发一条 TXT（即使空文本）在对端创建父消息，
             // 文件用同一 messageId 作为 FILE_START.msgId 挂到该消息下。
             await _transfer.SendTextAsync(sentContent, messageId);
+            ConnectionLog.Write("TXT sent", $"{sentContent.Length} chars");
             foreach (var att in Attachments.ToList())
             {
                 FileName = att.Name;
                 if (att.Size > 20L * 1024 * 1024)
                     Log("提示：此文件过大，蓝牙传输需较长时间");
                 await _transfer.SendFileAsync(att.PathText, Guid.NewGuid().ToString("N"), messageId);
+                ConnectionLog.Write("File sent", att.Name);
             }
             Text = string.Empty;
             // 发件侧始终生成一条记录（文本/附件）
@@ -838,6 +842,7 @@ public sealed class MainViewModel : ObservableObject
         }
         catch (Exception ex)
         {
+            ConnectionLog.Write("Send failed", $"{ex.GetType().Name}: {ex.Message}");
             Log($"发送失败: {ex.Message}");
         }
         finally

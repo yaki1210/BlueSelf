@@ -190,6 +190,7 @@ public sealed class TransferService : IDisposable
                 }
                 if (window.Count == 0) break;
                 await WriteFramesAsync(window);
+                ConnectionLog.Write("Chunk window", $"{sentBytes}/{size} bytes");
             }
         }
         catch (Exception ex)
@@ -207,17 +208,34 @@ public sealed class TransferService : IDisposable
         Post(() => TransferCompleted?.Invoke(TransferDir.SEND));
     }
 
+    /// <summary>单次 StoreAsync 的分段大小：RFCOMM 流控下一次性灌入约 1MB（16×64KB 窗口）
+    /// 极易在对端消费缓慢时挂起或失败。分段写对齐 Android 端的流式 write 行为，协议不变。</summary>
+    private const int WriteSegmentSize = 128 * 1024;
+
     private async Task WriteFramesAsync(IEnumerable<Frame> frames)
     {
-        var socket = _socket;
-        if (socket == null) throw new InvalidOperationException("未连接设备");
         var data = FrameCodec.EncodeBatch(frames.ToArray());
-        var writer = new Windows.Storage.Streams.DataWriter(socket.OutputStream);
-        writer.WriteBytes(data);
+        if (data.Length == 0) return;
         await _writeLock.WaitAsync();
+        // DataWriter 必须在锁内创建：锁外创建时若并发调用，会出现两个 writer 同时
+        // attach 同一 OutputStream，导致 COMException 或帧流交错（对端解析失败断链）。
+        Windows.Storage.Streams.DataWriter? writer = null;
         try
         {
-            await writer.StoreAsync();
+            var socket = _socket;
+            if (socket == null) throw new InvalidOperationException("未连接设备");
+            writer = new Windows.Storage.Streams.DataWriter(socket.OutputStream);
+
+            var offset = 0;
+            while (offset < data.Length)
+            {
+                var take = Math.Min(WriteSegmentSize, data.Length - offset);
+                var segment = new byte[take];
+                Buffer.BlockCopy(data, offset, segment, 0, take);
+                writer.WriteBytes(segment);
+                await writer.StoreAsync();
+                offset += take;
+            }
             LastWriteError = null;
             // 注意：不调用 FlushAsync()。对 StreamSocket 输出流，FlushAsync 会等待对端消费确认，
             // 蓝牙流控下可能长时间挂起导致发送 UI 卡“传输中”。数据已交给蓝牙栈发送，
@@ -226,13 +244,17 @@ public sealed class TransferService : IDisposable
         catch (Exception ex)
         {
             LastWriteError = ex; // W2：记录写失败，状态处理交给断链检测/W6 恢复编排
+            ConnectionLog.Write("Write failed", $"{ex.GetType().Name}: {ex.Message}");
             throw;
         }
         finally
         {
             _writeLock.Release();
-            writer.DetachStream();
-            writer.Dispose();
+            if (writer != null)
+            {
+                try { writer.DetachStream(); } catch { }
+                writer.Dispose();
+            }
         }
     }
 
