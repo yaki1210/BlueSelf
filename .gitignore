@@ -16,6 +16,8 @@
 local.properties
 .env
 debug.keystore
+my-upload-key.jks
+*.jks
 /.robolectric_home
 /.robo-init.gradle
 /.trae
