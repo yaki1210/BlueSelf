@@ -7,6 +7,7 @@
         <converters:BoolToVisibilityConverter x:Key="BoolToVis" />
         <converters:EmptyTextToVisibilityConverter x:Key="EmptyToVis" />
         <converters:NullToVisibilityConverter x:Key="NullToVis" />
+        <converters:ConnectingToCollapsedConverter x:Key="ConnectingToCollapsed" />
     </UserControl.Resources>
 
     <Grid Margin="20,16,20,16">
@@ -45,13 +46,27 @@
                          ScrollViewer.VerticalScrollBarVisibility="Auto">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <Button Command="{Binding DataContext.ConnectDeviceCommand, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"
-                                    CommandParameter="{Binding}"
-                                    Background="Transparent" BorderThickness="0" Padding="0"
-                                    HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center"
-                                    Cursor="Hand" ToolTip="点击连接此设备">
-                                <controls:DeviceListItem />
-                            </Button>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <!-- 主体：在线 = 仅设为目标；离线/失败/连接中 → 不动作（建链走显式按钮） -->
+                                <Button Grid.Column="0" Background="Transparent" BorderThickness="0" Padding="0"
+                                        HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center" Cursor="Hand"
+                                        Command="{Binding DataContext.RowClickCommand, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"
+                                        CommandParameter="{Binding}">
+                                    <controls:DeviceListItem />
+                                </Button>
+                                <!-- 动作按钮：显式建链入口（连接中隐藏） -->
+                                <Button Grid.Column="1" Style="{StaticResource PillButtonOutline}" Margin="4,0,0,0"
+                                        Padding="10,3" FontSize="11" Cursor="Hand"
+                                        ToolTip="建立蓝牙连接"
+                                        Command="{Binding DataContext.ConnectDeviceCommand, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"
+                                        CommandParameter="{Binding}"
+                                        Content="{Binding ActionText}"
+                                        Visibility="{Binding Status, Converter={StaticResource ConnectingToCollapsed}, FallbackValue=Visible}" />
+                            </Grid>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>

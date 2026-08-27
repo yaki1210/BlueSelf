@@ -10,6 +10,9 @@ namespace FileTransferApp.WinUI.Bluetooth;
 /// <summary>Direction of a transfer (drives the status column header/icon).</summary>
 public enum TransferDir { SEND, RECEIVE }
 
+/// <summary>连接状态机的显式状态(取代"socket 对象是否存在"的隐式判断)。</summary>
+public enum ConnState { Disconnected, Connecting, Connected, Reconnecting }
+
 /// <summary>Progress snapshot pushed to the UI (values are simple; VM formats them).</summary>
 public sealed record TransferProgress(TransferDir Dir, double Fraction, long BytesDone, long TotalBytes, long ElapsedMs);
 
@@ -35,6 +38,11 @@ public sealed class TransferService : IDisposable
 
     /// <summary>Bluetooth address of the currently connected peer (null when disconnected).</summary>
     public ulong? ConnectedPeerAddress { get; private set; }
+
+    /// <summary>当前链路状态:Connected 仅在读循环存活时为真。</summary>
+    public ConnState State { get; private set; } = ConnState.Disconnected;
+    /// <summary>状态迁移事件(已 Post 到 UI 线程上下文)。</summary>
+    public event Action<ConnState>? StateChanged;
 
     // Inbound file session (one active at a time)
     private ReceiveSession? _recv;
@@ -79,17 +87,24 @@ public sealed class TransferService : IDisposable
 
     public void Attach(StreamSocket socket, ulong? peerAddress)
     {
-        // 先安全清理旧连接，避免旧 ReadLoop 与新连接串扰。
+        // 先安全清理旧连接,避免旧 ReadLoop 与新连接串扰。
         Detach(silent: true);
+
+        ConnectionLog.Write("Socket attached", peerAddress?.ToString("X12") ?? "unknown");
 
         _socket = socket;
         ConnectedPeerAddress = peerAddress;
+        SetState(ConnState.Connecting);
         _cts = new CancellationTokenSource();
         _readTask = Task.Run(() => ReadLoop(socket, _cts.Token));
     }
 
-    /// <summary>断开当前连接（幂等）。仅当确实有活动 socket 时才触发 Disconnected 事件。</summary>
-    public void Detach() => Detach(silent: false);
+    /// <summary>断开当前连接(幂等)。仅当确实有活动 socket 时才触发 Disconnected 事件。</summary>
+    public void Detach()
+    {
+        SetState(ConnState.Disconnected);
+        Detach(silent: false);
+    }
 
     private void Detach(bool silent)
     {
@@ -100,6 +115,7 @@ public sealed class TransferService : IDisposable
         var socket = _socket;
         _socket = null;
         ConnectedPeerAddress = null;
+        if (!silent) SetState(ConnState.Disconnected); // 状态源统一:清理即断开
         if (socket != null)
         {
             try { socket.Dispose(); } catch { }
@@ -110,11 +126,11 @@ public sealed class TransferService : IDisposable
         if (hadActive && !silent) Post(() => Disconnected?.Invoke());
     }
 
-    /// <summary>移除一个已知的连接，仅当其仍是当前连接时才做全局清理（用于 ReadLoop 退出时）。</summary>
+    /// <summary>移除一个已知的连接,仅当其仍是当前连接时才做全局清理(用于 ReadLoop 退出时)。</summary>
     private void ClearIfCurrent(StreamSocket socket)
     {
-        if (!ReferenceEquals(_socket, socket)) return; // 已被新连接替换，不做任何清理
-        Detach(silent: true);
+        if (!ReferenceEquals(_socket, socket)) return; // 已被新连接替换,不做任何清理
+        Detach(silent: false);   // W3:读循环自然退出=链路死亡,必须通知 UI(非静默)
     }
 
     // ---------- Send ----------
@@ -140,7 +156,7 @@ public sealed class TransferService : IDisposable
         var totalChunks = (long)Math.Ceiling(size / (double)chunkSize);
         var start = DateTime.UtcNow;
 
-        // FILE_START.msgId 必须等于父 TXT 消息的 id，Android 端才会把文件挂到该消息下。
+        // FILE_START.msgId 必须等于父 TXT 消息的 id,Android 端才会把文件挂到该消息下。
         var parentMsgId = msgId ?? fileId;
         var startFrame = new Frame(MessageProtocol.TypeFileStart, NextSeq(),
             FileMetaJson.EncodeStart(fileId, parentMsgId, file.Name, "application/octet-stream", size, md5, chunkSize, totalChunks));
@@ -180,7 +196,7 @@ public sealed class TransferService : IDisposable
         {
             Post(() => LogError?.Invoke($"发送失败: {ex.Message}"));
             Post(() => TransferCompleted?.Invoke(TransferDir.SEND));
-            throw; // 上抛，让调用方感知失败，避免"看起来发送成功实际没发出去"
+            throw; // 上抛,让调用方感知失败,避免"看起来发送成功实际没发出去"
         }
 
         var endFrame = new Frame(MessageProtocol.TypeFileEnd, NextSeq(),
@@ -202,9 +218,15 @@ public sealed class TransferService : IDisposable
         try
         {
             await writer.StoreAsync();
+            LastWriteError = null;
             // 注意：不调用 FlushAsync()。对 StreamSocket 输出流，FlushAsync 会等待对端消费确认，
-            // 蓝牙流控下可能长时间挂起导致发送 UI 卡"传输中"。数据已交给蓝牙栈发送，
+            // 蓝牙流控下可能长时间挂起导致发送 UI 卡“传输中”。数据已交给蓝牙栈发送，
             // 帧可靠性由协议层的 FILE_ACK / MD5 端到端校验保证（与 Android 端 flush 语义一致）。
+        }
+        catch (Exception ex)
+        {
+            LastWriteError = ex; // W2：记录写失败，状态处理交给断链检测/W6 恢复编排
+            throw;
         }
         finally
         {
@@ -214,6 +236,9 @@ public sealed class TransferService : IDisposable
         }
     }
 
+    /// <summary>最近一次写入失败的异常（成功写入后清空），供上层诊断。</summary>
+    public Exception? LastWriteError { get; private set; }
+
     // ---------- Read loop (also ACK/Emit) ----------
 
     private async Task ReadLoop(StreamSocket socket, CancellationToken ct)
@@ -221,6 +246,12 @@ public sealed class TransferService : IDisposable
         using var reader = new Windows.Storage.Streams.DataReader(socket.InputStream);
         try
         {
+            // 读循环进入阻塞读即视为链路存活（读循环存活=链路真相）。
+            // 若不用首帧判活：对端可能长时间不发数据，导致 UI 长期停留在"连接中"。
+            // 链路死亡由读返回 EOF/异常即时感知并触发 Disconnected。
+            SetState(ConnState.Connected);
+            ConnectionLog.Write("Link confirmed", "read loop active");
+
             while (!ct.IsCancellationRequested)
             {
                 Frame frame;
@@ -241,6 +272,7 @@ public sealed class TransferService : IDisposable
         }
         finally
         {
+            ConnectionLog.Write("ReadLoop ended");
             // 只清理本循环所属的连接；若已被新连接替换则不动，避免误杀新连接。
             ClearIfCurrent(socket);
         }
@@ -258,7 +290,7 @@ public sealed class TransferService : IDisposable
                 HandleFileStart(frame);
                 break;
             case MessageProtocol.TypeFileChunk:
-                // 严格按读取顺序写入磁盘（对齐 Android 的同步入队），避免乱序导致 MD5 失败
+                // 严格按读取顺序写入磁盘(对齐 Android 的同步入队),避免乱序导致 MD5 失败
                 await HandleFileChunk(frame);
                 break;
             case MessageProtocol.TypeFileEnd:
@@ -291,7 +323,7 @@ public sealed class TransferService : IDisposable
         _recv = session;
 
         EmitProgress(TransferDir.RECEIVE, meta.Size, 0, DateTime.UtcNow);
-        Post(() => Info?.Invoke($"开始接收 {meta.Name}（{meta.Size} 字节）"));
+        Post(() => Info?.Invoke($"开始接收 {meta.Name}({meta.Size} 字节)"));
         Post(() => ReceiveStarted?.Invoke(meta.Name));
     }
 
@@ -449,6 +481,14 @@ public sealed class TransferService : IDisposable
     {
         Detach();
         _writeLock.Dispose();
+    }
+
+    private void SetState(ConnState s)
+    {
+        if (State == s) return;
+        State = s;
+        ConnectionLog.Write("State", $"{s}");
+        Post(() => StateChanged?.Invoke(s));
     }
 
     /// <summary>State for one active inbound file receive.</summary>

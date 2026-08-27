@@ -57,9 +57,20 @@ public sealed class StatusToBrushConverter : IValueConverter
             {
                 DeviceStatus.Online => new SolidColorBrush(Color.FromRgb(29, 201, 129)),
                 DeviceStatus.Connecting => new SolidColorBrush(Color.FromRgb(239, 170, 23)),
+                DeviceStatus.Failed => new SolidColorBrush(Color.FromRgb(239, 68, 68)), // 红：失败可重试
                 _ => new SolidColorBrush(Color.FromRgb(158, 158, 158)),
             }
             : new SolidColorBrush(Colors.Gray);
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>DeviceStatus.Connecting → Collapsed，其余 → Visible（连接中隐藏动作按钮）。</summary>
+public sealed class ConnectingToCollapsedConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        => value is DeviceStatus.Connecting ? Visibility.Collapsed : Visibility.Visible;
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         => throw new NotSupportedException();

@@ -18,6 +18,10 @@
     <s:String x:Key="statOnline">在线</s:String>
     <s:String x:Key="statConnecting">连接中</s:String>
     <s:String x:Key="statOffline">离线</s:String>
+    <s:String x:Key="statFailed">失败</s:String>
+    <s:String x:Key="actConnect">连接</s:String>
+    <s:String x:Key="actRetry">重试</s:String>
+    <s:String x:Key="actSetTarget">设为目标</s:String>
 
     <!-- 编辑器 -->
     <s:String x:Key="wsTargetHint">请在左侧选择要发送的目标设备</s:String>

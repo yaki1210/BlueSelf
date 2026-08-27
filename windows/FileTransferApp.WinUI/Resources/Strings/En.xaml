@@ -16,6 +16,10 @@
     <s:String x:Key="statOnline">Online</s:String>
     <s:String x:Key="statConnecting">Connecting</s:String>
     <s:String x:Key="statOffline">Offline</s:String>
+    <s:String x:Key="statFailed">Failed</s:String>
+    <s:String x:Key="actConnect">Connect</s:String>
+    <s:String x:Key="actRetry">Retry</s:String>
+    <s:String x:Key="actSetTarget">Set target</s:String>
 
     <s:String x:Key="wsTargetHint">Select a target device on the left</s:String>
     <s:String x:Key="wsSendTo">To: </s:String>
