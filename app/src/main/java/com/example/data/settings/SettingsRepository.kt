@@ -43,6 +43,10 @@ class SettingsRepository(context: Context) {
     )
     val themeMode: StateFlow<AppThemeMode> = _themeMode.asStateFlow()
 
+    /** A5：新消息通知开关（默认开启）。应用层闸门，与系统通知权限双重控制。 */
+    private val _notificationsEnabled = MutableStateFlow(prefs.getBoolean(KEY_NOTIFICATIONS, true))
+    val notificationsEnabled: StateFlow<Boolean> = _notificationsEnabled.asStateFlow()
+
     fun setLanguage(language: AppLanguage) {
         prefs.edit().putString(KEY_LANGUAGE, language.tag).apply()
         _language.value = language
@@ -53,9 +57,15 @@ class SettingsRepository(context: Context) {
         _themeMode.value = mode
     }
 
+    fun setNotificationsEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_NOTIFICATIONS, enabled).apply()
+        _notificationsEnabled.value = enabled
+    }
+
     companion object {
         private const val PREFS_NAME = "selftrans_settings"
         private const val KEY_LANGUAGE = "language"
         private const val KEY_THEME = "theme_mode"
+        private const val KEY_NOTIFICATIONS = "notifications_enabled"
     }
 }

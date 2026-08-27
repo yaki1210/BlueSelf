@@ -30,7 +30,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import android.content.Context
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.MainActivity
 import com.example.R
 import com.example.data.settings.AppLanguage
 import com.example.data.settings.AppThemeMode
@@ -54,6 +58,8 @@ fun SettingsScreen(
 ) {
     val language by viewModel.language.collectAsStateWithLifecycle()
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
+    val notificationsEnabled by viewModel.notificationsEnabled.collectAsStateWithLifecycle()
+    val context = LocalContext.current
 
     Scaffold(
         topBar = {
@@ -156,6 +162,42 @@ fun SettingsScreen(
                     selected = themeMode == AppThemeMode.DARK,
                     testTag = "theme_dark",
                     onClick = { viewModel.setThemeMode(AppThemeMode.DARK) }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(28.dp))
+
+            // A5：通知区块（沿用语言/主题的气泡样式）。
+            Text(
+                text = stringResource(R.string.settings_notifications_section),
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(bottom = 10.dp)
+            )
+            SettingsBubble {
+                SettingsOptionRow(
+                    label = stringResource(R.string.settings_notifications_on),
+                    selected = notificationsEnabled,
+                    testTag = "notifications_on",
+                    onClick = {
+                        viewModel.setNotificationsEnabled(true)
+                        // 双重闸门：App 内开关已开但系统级通知被关闭时，引导去系统设置。
+                        if (!com.example.notifications.MessageNotifier.canNotify(context)) {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.notif_open_system_settings),
+                                Toast.LENGTH_LONG
+                            ).show()
+                            (context as? MainActivity)?.openSystemNotificationSettings()
+                        }
+                    }
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                SettingsOptionRow(
+                    label = stringResource(R.string.settings_notifications_off),
+                    selected = !notificationsEnabled,
+                    testTag = "notifications_off",
+                    onClick = { viewModel.setNotificationsEnabled(false) }
                 )
             }
 

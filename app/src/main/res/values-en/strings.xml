@@ -79,6 +79,16 @@
     <string name="settings_theme_light">Light</string>
     <string name="settings_theme_dark">Dark</string>
 
+    <!-- A5: Notifications -->
+    <string name="settings_notifications_section">Notifications · 通知</string>
+    <string name="settings_notifications_on">Enable new message notifications</string>
+    <string name="settings_notifications_off">Disable new message notifications</string>
+    <string name="notif_channel_name">New messages</string>
+    <string name="notif_channel_desc">Notify when a text or file is received</string>
+    <string name="notif_message_title">New message from %1$s</string>
+    <string name="notif_file_title">%1$s sent you a file</string>
+    <string name="notif_open_system_settings">System notifications are off. Enable them in system settings.</string>
+
     <!-- Snackbars (ViewModel) -->
     <string name="snackbar_pasted">Clipboard content pasted</string>
     <string name="snackbar_clipboard_empty">Clipboard is empty</string>

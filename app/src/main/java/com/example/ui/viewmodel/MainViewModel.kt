@@ -24,6 +24,7 @@ import com.example.data.repository.MessageRepository
 import com.example.data.settings.AppLanguage
 import com.example.data.settings.AppThemeMode
 import com.example.data.settings.SettingsRepository
+import com.example.notifications.MessageNotifier
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -61,8 +62,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val language: StateFlow<AppLanguage> = settingsRepository.language
     val themeMode: StateFlow<AppThemeMode> = settingsRepository.themeMode
 
+    /** A5：新消息通知开关（应用层闸门，与系统权限/系统开关双重控制）。 */
+    val notificationsEnabled: StateFlow<Boolean> = settingsRepository.notificationsEnabled
+
+    fun setNotificationsEnabled(enabled: Boolean) = settingsRepository.setNotificationsEnabled(enabled)
+
+    // ---- A4: 前台标志（MainActivity onResume/onPause 维护）----
+    var isAppInForeground = false
+        private set
+
+    fun setForeground(active: Boolean) { isAppInForeground = active }
+
     private val appContext: Application
         get() = getApplication()
+
+    /** 供 Compose 层取应用上下文（可发现性请求等系统调用使用）。 */
+    fun getApplicationContext(): Application = getApplication()
 
     /** Serializes all receive-side DB writes so concurrent receive coroutines never
      * clobber each other (a whole-row @Update with a stale snapshot overwrites a fresh
@@ -155,6 +170,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val entity = MessageProtocol.packetToEntity(packet, isOutgoing = false)
                 withContext(Dispatchers.IO) {
                     receiveDbLock.withLock { messageRepository.saveMessage(entity) }
+                }
+                // A4：App 在后台且通知开关开启时发状态栏通知；前台走 Snackbar。
+                if (!isAppInForeground && settingsRepository.notificationsEnabled.value) {
+                    val senderName = packet.senderName.ifBlank {
+                        bluetoothManager.activeDevice.value?.name ?: "远端设备"
+                    }
+                    MessageNotifier.notifyMessage(appContext, senderName, packet.content)
                 }
                 _snackbarEvent.emit(
                     appContext.getString(R.string.snackbar_received_from, packet.senderName)
@@ -257,6 +279,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     if (result.success) {
                         val file = messageRepository.getFileById(result.fileId)
                         if (file != null) {
+                            // A4：文件接收完成同样在后台时发通知。
+                            if (!isAppInForeground && settingsRepository.notificationsEnabled.value) {
+                                val senderName = messageRepository.getMessageByIdOnce(file.messageId)?.senderDeviceName
+                                    ?: bluetoothManager.activeDevice.value?.name ?: "远端设备"
+                                MessageNotifier.notifyFile(appContext, senderName, file.fileName)
+                            }
                             _snackbarEvent.emit(
                                 appContext.getString(R.string.snackbar_file_received, file.fileName)
                             )
@@ -544,6 +572,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun selectDevice(device: DeviceEntity) {
         viewModelScope.launch {
             deviceRepository.setCurrentDevice(device.id)
+            // 方案A（与 Windows W1 同步）：已连接该设备且链路健康 → 仅切换目标，不触碰现有链路。
+            val active = bluetoothManager.activeDevice.value
+            val state = bluetoothManager.connectionState.value
+            if (active?.macAddress == device.macAddress && state == BluetoothConnectionState.ONLINE) {
+                return@launch
+            }
             bluetoothManager.connectToDevice(device)
             _snackbarEvent.emit(appContext.getString(R.string.snackbar_connecting, device.name))
         }

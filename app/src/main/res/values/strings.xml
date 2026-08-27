@@ -79,6 +79,16 @@
     <string name="settings_theme_light">亮色</string>
     <string name="settings_theme_dark">暗色</string>
 
+    <!-- A5：通知设置 -->
+    <string name="settings_notifications_section">通知 · 通知</string>
+    <string name="settings_notifications_on">开启新消息通知</string>
+    <string name="settings_notifications_off">关闭新消息通知</string>
+    <string name="notif_channel_name">新消息</string>
+    <string name="notif_channel_desc">收到文本或文件时通知</string>
+    <string name="notif_message_title">来自 %1$s 的新消息</string>
+    <string name="notif_file_title">%1$s 发来了文件</string>
+    <string name="notif_open_system_settings">系统通知已关闭，请到系统设置中开启</string>
+
     <!-- 提示消息（ViewModel） -->
     <string name="snackbar_pasted">已粘贴剪贴板内容</string>
     <string name="snackbar_clipboard_empty">剪贴板为空</string>

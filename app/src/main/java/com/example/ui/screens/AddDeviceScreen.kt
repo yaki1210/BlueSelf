@@ -1,6 +1,10 @@
 package com.example.ui.screens
 
 import android.Manifest
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager as AndroidBluetoothManager
+import android.content.Context
+import android.content.Intent
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -85,6 +89,29 @@ fun AddDeviceScreen(
 
     var hasPermission by remember { mutableStateOf(false) }
     var showManualAddDialog by remember { mutableStateOf(false) }
+
+    // A2：可发现性申请 —— PC 端扫描不到未配对手机，多因手机当前不可见。
+    // 进入本页时若蓝牙已开但不在可发现模式，弹系统"允许被发现"对话框（300s）。
+    // 用户拒绝只是本轮不可见；不做持久化记忆（可发现性是安全敏感的临时状态）。
+    val discoverableLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { /* 结果无所谓：拒绝仅这 5 分钟不可见 */ }
+
+    LaunchedEffect(Unit) {
+        val adapter = (viewModel.getApplicationContext()
+            .getSystemService(Context.BLUETOOTH_SERVICE) as? AndroidBluetoothManager)?.adapter
+        if (adapter?.isEnabled == true &&
+            adapter.scanMode != BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE
+        ) {
+            runCatching {
+                discoverableLauncher.launch(
+                    Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE).apply {
+                        putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300)
+                    }
+                )
+            }
+        }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()

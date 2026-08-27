@@ -1,12 +1,17 @@
 package com.example
 
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
@@ -46,6 +51,27 @@ sealed interface Screen {
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
 
+    /** A3：通知权限单独申请（Android 13+）。拒绝不阻塞蓝牙流程，A4 发通知时静默跳过。 */
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    /** A5：App 内开关打开但系统级通知被关闭时，引导跳系统通知设置。 */
+    fun openSystemNotificationSettings() {
+        startActivity(
+            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+            }
+        )
+    }
+
     /**
      * Applies the user-selected in-app language to this Activity's base context
      * so resources resolve in the chosen locale.
@@ -63,6 +89,19 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // A4：确保通知渠道存在（幂等，仅创建一次）。
+        com.example.notifications.MessageNotifier.ensureChannel(this)
+        requestNotificationPermissionIfNeeded()
+
+        // A4：前台标志 —— App 在前台时不发状态栏通知（走 Snackbar），退后台才发。
+        lifecycle.addObserver(androidx.lifecycle.LifecycleEventObserver { _, event ->
+            when (event) {
+                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> viewModel.setForeground(true)
+                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> viewModel.setForeground(false)
+                else -> Unit
+            }
+        })
 
         setContent {
             val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
