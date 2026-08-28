@@ -171,12 +171,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 withContext(Dispatchers.IO) {
                     receiveDbLock.withLock { messageRepository.saveMessage(entity) }
                 }
-                // A4：App 在后台且通知开关开启时发状态栏通知；前台走 Snackbar。
+                // sName 事后校准：链路自报姓名与已存设备类型/名称不一致时回写 Room（图标自愈）。
+                calibrateDeviceFromSenderName(packet.senderName, packet.senderId)
+                // A4：App 在后台且通知开关开启时发状态栏通知；前台走 Snackbar。点击通知跳转详情。
                 if (!isAppInForeground && settingsRepository.notificationsEnabled.value) {
                     val senderName = packet.senderName.ifBlank {
                         bluetoothManager.activeDevice.value?.name ?: "远端设备"
                     }
-                    MessageNotifier.notifyMessage(appContext, senderName, packet.content)
+                    MessageNotifier.notifyMessage(appContext, senderName, packet.content, entity.id)
                 }
                 _snackbarEvent.emit(
                     appContext.getString(R.string.snackbar_received_from, packet.senderName)
@@ -184,6 +186,38 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
+
+    /**
+     * sName 事后校准：PC 发来的 TXT 帧带自报姓名（Windows 机器名），
+     * 据此重判已保存设备的 deviceType/name 并回写。当初存错图标的设备在收到第一条消息后自动纠正。
+     */
+    private suspend fun calibrateDeviceFromSenderName(senderName: String, senderId: String?) {
+        if (senderName.isBlank()) return
+        val lower = senderName.lowercase()
+        val newType = when {
+            TabletWords.any { lower.contains(it) } -> "TABLET"
+            PcWords.any { lower.contains(it) } -> "PC"
+            PhoneWords.any { lower.contains(it) } -> "PHONE"
+            else -> return // 自报名无法分类时不动库
+        }
+        withContext(Dispatchers.IO) {
+            val existing = senderId?.let { deviceRepository.getDeviceById(it) }
+                ?: deviceRepository.getDeviceByMac(senderId ?: return@withContext)
+                ?: return@withContext
+            if (existing.deviceType != newType || existing.name != senderName) {
+                deviceRepository.saveDevice(existing.copy(deviceType = newType, name = senderName))
+                Log.i("MainViewModel", "calibrated device ${existing.id}: type=${existing.deviceType}->$newType name=${existing.name}->${senderName}")
+            }
+        }
+    }
+
+    // 与 Windows DeviceKind.cs 对齐的词表（小写比较）。
+    private val PcWords =
+        listOf("pc", "windows", "mac", "laptop", "notebook", "desktop", "电脑", "台式", "笔电", "笔记本")
+    private val TabletWords =
+        listOf("pad", "tablet", "tab", "ipad", "平板")
+    private val PhoneWords =
+        listOf("phone", "galaxy", "pixel", "iphone", "xiaomi", "手机", "一加", "oppo", "vivo", "华为", "honor", "荣耀")
 
     private fun observeManagerErrors() {
         viewModelScope.launch {
@@ -279,11 +313,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     if (result.success) {
                         val file = messageRepository.getFileById(result.fileId)
                         if (file != null) {
-                            // A4：文件接收完成同样在后台时发通知。
+                            // A4：文件接收完成同样在后台时发通知。点击通知跳转该消息详情。
                             if (!isAppInForeground && settingsRepository.notificationsEnabled.value) {
                                 val senderName = messageRepository.getMessageByIdOnce(file.messageId)?.senderDeviceName
                                     ?: bluetoothManager.activeDevice.value?.name ?: "远端设备"
-                                MessageNotifier.notifyFile(appContext, senderName, file.fileName)
+                                MessageNotifier.notifyFile(appContext, senderName, file.fileName, file.messageId)
                             }
                             _snackbarEvent.emit(
                                 appContext.getString(R.string.snackbar_file_received, file.fileName)

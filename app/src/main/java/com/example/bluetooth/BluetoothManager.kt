@@ -548,14 +548,23 @@ class BluetoothManager(private val context: Context) {
     private fun determineDeviceType(name: String, majorClass: Int?): String {
         val lower = name.lowercase()
         return when {
-            lower.contains("pc") || lower.contains("windows") || lower.contains("mac") || lower.contains("laptop") || lower.contains("电脑") -> "PC"
-            lower.contains("pad") || lower.contains("tablet") || lower.contains("tab") -> "TABLET"
-            lower.contains("phone") || lower.contains("galaxy") || lower.contains("pixel") || lower.contains("iphone") || lower.contains("手机") || lower.contains("xiaomi") -> "PHONE"
+            // 词表与 Windows DeviceKind.cs 四信号分类器完全对齐（ tablet 最具体先行，避免 pad 误伤 pc 词 ）。
+            TabletWords.any { lower.contains(it) } -> "TABLET"
+            PcWords.any { lower.contains(it) } -> "PC"
+            PhoneWords.any { lower.contains(it) } -> "PHONE"
             majorClass == 0x0100 -> "PC" // BluetoothClass.Device.Major.COMPUTER
             majorClass == 0x0200 -> "PHONE" // BluetoothClass.Device.Major.PHONE
             else -> "OTHER"
         }
     }
+
+    // 与 Windows DeviceKind.cs 对齐的词表（小写比较）。
+    private val PcWords =
+        listOf("pc", "windows", "mac", "laptop", "notebook", "desktop", "电脑", "台式", "笔电", "笔记本")
+    private val TabletWords =
+        listOf("pad", "tablet", "tab", "ipad", "平板")
+    private val PhoneWords =
+        listOf("phone", "galaxy", "pixel", "iphone", "xiaomi", "手机", "一加", "oppo", "vivo", "华为", "honor", "荣耀")
 
     fun cleanUp() {
         stopScan()

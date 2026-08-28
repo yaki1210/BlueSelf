@@ -23,6 +23,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -86,6 +87,20 @@ class MainActivity : ComponentActivity() {
         super.attachBaseContext(newBase.createConfigurationContext(config))
     }
 
+    /** 通知点击待跳转的消息 id（Compose 层消费后置空）。 */
+    private val _pendingMessageId = mutableStateOf<String?>(null)
+    val pendingMessageId: String? get() = _pendingMessageId.value
+
+    fun consumePendingMessageId() {
+        _pendingMessageId.value = null
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        _pendingMessageId.value = intent.getStringExtra(com.example.notifications.MessageNotifier.EXTRA_MESSAGE_ID)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -93,6 +108,9 @@ class MainActivity : ComponentActivity() {
         // A4：确保通知渠道存在（幂等，仅创建一次）。
         com.example.notifications.MessageNotifier.ensureChannel(this)
         requestNotificationPermissionIfNeeded()
+
+        // 通知点击冷启动：从启动 Intent 读取目标消息 id。
+        _pendingMessageId.value = intent?.getStringExtra(com.example.notifications.MessageNotifier.EXTRA_MESSAGE_ID)
 
         // A4：前台标志 —— App 在前台时不发状态栏通知（走 Snackbar），退后台才发。
         lifecycle.addObserver(androidx.lifecycle.LifecycleEventObserver { _, event ->
@@ -112,7 +130,7 @@ class MainActivity : ComponentActivity() {
             }
             MyApplicationTheme(darkTheme = darkTheme) {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    AppNavigation(viewModel = viewModel)
+                    AppNavigation(viewModel = viewModel, activity = this@MainActivity)
                 }
             }
         }
@@ -120,8 +138,17 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun AppNavigation(viewModel: MainViewModel) {
+fun AppNavigation(viewModel: MainViewModel, activity: MainActivity? = null) {
     var currentScreen by remember { mutableStateOf<Screen>(Screen.Home) }
+
+    // 通知点击跳转：有 pending 消息 id 时切到详情页并消费（冷启动/热启动都覆盖）。
+    val pendingId = activity?.pendingMessageId
+    LaunchedEffect(pendingId) {
+        if (pendingId != null) {
+            currentScreen = Screen.MessageDetail(pendingId)
+            activity.consumePendingMessageId()
+        }
+    }
 
     BackHandler(enabled = currentScreen != Screen.Home) {
         currentScreen = when (currentScreen) {
