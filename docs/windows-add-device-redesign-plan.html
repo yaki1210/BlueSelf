@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Windows 端「添加新设备」重做方案 · BlueSelf</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --ink: #1a1d23; --muted: #6b7280;
+    --brand: #4f46e5; --brand-soft: #eef2ff; --line: #e5e7eb;
+    --ok: #059669; --warn: #d97706; --bad: #dc2626; --code-bg: #0f172a; --code-ink: #e2e8f0;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif; background: var(--bg); color: var(--ink); line-height: 1.65; padding: 32px 16px 64px; }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  header.hero { background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); color: #fff; border-radius: 16px; padding: 32px 36px; margin-bottom: 28px; }
+  header.hero h1 { font-size: 26px; margin-bottom: 10px; letter-spacing: -0.3px; }
+  header.hero p { opacity: .92; font-size: 14px; }
+  .badge-row { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .badge { background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.3); border-radius: 999px; padding: 3px 12px; font-size: 12px; }
+  h2 { font-size: 19px; margin: 34px 0 14px; display: flex; align-items: center; gap: 10px; }
+  h2 .n { background: var(--brand); color: #fff; width: 26px; height: 26px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; flex: none; }
+  h3 { font-size: 15px; margin: 20px 0 8px; color: #312e81; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 22px 24px; margin-bottom: 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 10px 0 4px; }
+  th { text-align: left; background: var(--brand-soft); color: #312e81; font-weight: 600; }
+  th, td { padding: 9px 12px; border: 1px solid var(--line); vertical-align: top; }
+  tr:nth-child(even) td { background: #fafafa; }
+  code { font-family: Consolas, "Cascadia Code", monospace; background: #eef2ff; color: #3730a3; padding: 1px 6px; border-radius: 5px; font-size: 12px; }
+  pre { background: var(--code-bg); color: var(--code-ink); border-radius: 12px; padding: 18px 20px; font-size: 12.5px; line-height: 1.6; overflow-x: auto; margin: 12px 0; }
+  pre code { background: none; color: inherit; padding: 0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin: 14px 0; }
+  .mini { border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; background: #fafafa; }
+  .mini b.t { display: block; font-size: 13.5px; margin-bottom: 6px; }
+  .mini p { font-size: 13px; color: var(--muted); }
+  .tag { display: inline-block; font-size: 11px; font-weight: 700; border-radius: 6px; padding: 2px 8px; margin-right: 6px; vertical-align: 1px; }
+  .tag.root { background: #fee2e2; color: #b91c1c; }
+  .tag.fix { background: #d1fae5; color: #047857; }
+  .tag.neu { background: #dbeafe; color: #1d4ed8; }
+  .callout { border-left: 4px solid var(--warn); background: #fffbeb; border-radius: 0 10px 10px 0; padding: 12px 16px; font-size: 13px; margin: 12px 0; }
+  .callout.ok { border-color: var(--ok); background: #ecfdf5; }
+  .callout.no { border-color: var(--bad); background: #fef2f2; }
+  ul.tight { padding-left: 20px; font-size: 13.5px; }
+  ul.tight li { margin: 5px 0; }
+  .flow { display: flex; align-items: stretch; gap: 0; margin: 16px 0; flex-wrap: wrap; }
+  .flow .step { flex: 1 1 200px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; position: relative; margin: 6px; }
+  .flow .step .k { font-size: 11px; color: var(--brand); font-weight: 700; letter-spacing: .5px; }
+  .flow .step b { display: block; font-size: 13.5px; margin: 3px 0; }
+  .flow .step p { font-size: 12.5px; color: var(--muted); }
+  footer { margin-top: 40px; text-align: center; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <h1>Windows 端「添加新设备」重做方案</h1>
+  <p>BlueSelf 跨端文件传输 · AddDeviceView 重做 + 设备图标分类协议升级（含 Android 端一处小改）</p>
+  <div class="badge-row">
+    <span class="badge">状态：待确认</span>
+    <span class="badge">2026-08-28</span>
+    <span class="badge">前置结论已定：配对记录退化 + legacy link key 被拒 → 重配已解决连接问题</span>
+  </div>
+</header>
+
+<h2><span class="n">1</span>三个问题的根因</h2>
+
+<div class="grid">
+  <div class="mini">
+    <b class="t"><span class="tag root">根因一</span>电脑图标失效</b>
+    <p>旧方案"名字加 Windows"从未真正写回系统蓝牙名——<code>LocalDeviceName()</code> 只是生成了字符串，仅用于 PC→手机 TXT 帧的 <code>sName</code>。而 Android 入库的 <code>deviceType</code> 取自<strong>扫描时的名字 + CoD</strong>：广播名无关键词、CoD 又不可靠（Realtek × Qualcomm），就被存成 PHONE，且从不修正。</p>
+  </div>
+  <div class="mini">
+    <b class="t"><span class="tag root">根因二</span>PC 扫不到新设备</b>
+    <p><code>FindAllAsync(AssociationEndpoint)</code> 只翻系统 AEP 缓存、不触发射频 inquiry，未配对手机很快被缓存驱逐；再叠加 <code>IsLikelyPeerDevice</code> 按"名字不像就丢"的过滤，一加 11 即使被看到也会被滤掉。</p>
+  </div>
+  <div class="mini">
+    <b class="t"><span class="tag root">根因三</span>扫描图标不正常</b>
+    <p><code>AddDeviceView.xaml</code> 状态横幅左侧的 TextBlock <strong>没有绑定任何 glyph 字符</strong>（Text 缺失，只绑了可见性），所以显示异常；顶栏按钮误用"刷新设备列表"文案，且无扫描中的动态反馈。</p>
+  </div>
+</div>
+
+<h2><span class="n">2</span>方案总览</h2>
+<div class="card">
+  <div class="flow">
+    <div class="step"><span class="k">WIN A</span><b>DeviceKind 四信号分类器</b><p>词表 + CoD + BlueSelf 服务命中 + sName，两端词表对齐的唯一实现</p></div>
+    <div class="step"><span class="k">WIN B</span><b>DeviceWatcher 流式扫描</b><p>真实射频发现，属性直读不建对象，800ms 去重即时上屏，直接 PairAsync 配对</p></div>
+    <div class="step"><span class="k">WIN C</span><b>AddDeviceView 重做</b><p>旋转扫描图标、流式列表、空态引导、行尾按钮三态</p></div>
+    <div class="step"><span class="k">AND</span><b>sName 事后校准</b><p>Android 收到 TXT 时按 sName 重判并回写 Room，存错也能自愈</p></div>
+  </div>
+  <div class="callout ok"><b>关键设计决策：</b>不做"PC 程序化改系统蓝牙名"（需管理员 + 重启蓝牙栈，且对手机端已保存记录无效），改走<strong>消息层 sName 校准</strong>：零权限、即时生效、双向闭环，且协议字段已存在。不引入 32feet 等第三方库；不动现有 RFCOMM/协议帧。</div>
+</div>
+
+<h3>四信号表决</h3>
+<table>
+  <tr><th>信号</th><th>权重</th><th>来源</th><th>说明</th></tr>
+  <tr><td>① 名字关键词</td><td>高</td><td>蓝牙名</td><td>保留现词表，补 <code>laptop/notebook/desktop/台式/笔电/笔记本</code>，两端完全对齐</td></tr>
+  <tr><td>② CoD 主类</td><td>中</td><td>Class of Device</td><td>名字无关键词时的兜底；本机组合上报不可靠，不单独定论</td></tr>
+  <tr><td>③ BlueSelf 服务命中</td><td>高</td><td>SDP 缓存 / 连接事实</td><td><b>新增权威信号</b>：能连上的设备一定装了 BlueSelf，独立于名字与 CoD</td></tr>
+  <tr><td>④ 链路自报 sName</td><td>高</td><td>TXT 帧 sName 字段</td><td>协议已有字段，连接后用于事后校准已保存设备的类型与显示名</td></tr>
+</table>
+<pre><code>pc     ← ①命中PC词，或 ④sName命中PC词，或（②=Computer 且 ③有服务）
+tablet ← ①命中平板词，或 ④sName命中平板词
+phone  ← ①命中手机词，或（②=Phone 且 ③有服务）
+other  ← 其余</code></pre>
+
+<h2><span class="n">3</span>发现机制：旧路径 vs 新路径</h2>
+<table>
+  <tr><th>维度</th><th>现状（FindAllAsync）</th><th>重做后（DeviceWatcher）</th></tr>
+  <tr><td>是否触发真实射频扫描</td><td>否（翻系统 AEP 缓存）</td><td>是（系统级 discovery）</td></tr>
+  <tr><td>未配对设备可见性</td><td>短暂可见后消失（缓存驱逐）</td><td>持续事件流，Removed 前一直在</td></tr>
+  <tr><td>结果上屏</td><td>12s 超时后一次性</td><td>~0.8s debounce 流式上屏</td></tr>
+  <tr><td>单设备开销</td><td>每台一次 FromIdAsync</td><td>零额外对象创建，纯属性读取</td></tr>
+  <tr><td>配对入口</td><td>FromIdAsync 后 PairAsync</td><td>watcher 的 DeviceInformation 直接 PairAsync（SSP 新密钥，绕开 legacy key 拒绝路径）</td></tr>
+</table>
+<div class="callout">AQS 限定经典蓝牙 AEP +（CanPair OR IsPaired 放宽，保证已配对设备可见可重连）；地址/CoD 从事件属性直读，实现时先打印候选属性再固化解析，防驱动差异。</div>
+
+<h2><span class="n">4</span>扫描 UI 重做</h2>
+<table>
+  <tr><th>区域</th><th>现状</th><th>重做后</th></tr>
+  <tr><td>顶栏按钮</td><td>「刷新设备列表」（误用 wsRefresh）</td><td>「扫描设备」⇄ 扫描中变「停止扫描」</td></tr>
+  <tr><td>状态横幅图标</td><td>空 TextBlock（异常根源）</td><td>蓝牙 glyph E706 + IsScanning 触发旋转动画</td></tr>
+  <tr><td>状态文案</td><td>静态"正在扫描/扫描完成"</td><td>"正在扫描…（已发现 N 台）"实时计数</td></tr>
+  <tr><td>结果列表</td><td>12s 后一次性全量</td><td>流式插入；类型图标用新分类器 + 未配对高亮</td></tr>
+  <tr><td>行尾按钮</td><td>固定「连接并添加」</td><td>未配对→「配对并添加」；已配对→「连接」；已连接→「已连接 ✓」禁用</td></tr>
+  <tr><td>空态</td><td>静态"未发现设备"</td><td>扫描中：脉动图标 + "请确认手机 App 在前台、蓝牙可发现"；0 结果：3 条排查建议</td></tr>
+</table>
+
+<h2><span class="n">5</span>改动清单</h2>
+<table>
+  <tr><th>#</th><th>文件</th><th>动作</th><th>内容</th></tr>
+  <tr><td>1</td><td><code>Bluetooth/Core/DeviceKind.cs</code></td><td>新增</td><td>四信号分类器，两端词表对齐的唯一实现</td></tr>
+  <tr><td>2</td><td><code>Bluetooth/Core/DeviceWatcherScanner.cs</code></td><td>新增</td><td>DeviceWatcher 流式扫描（替代 DeviceScanner.cs）</td></tr>
+  <tr><td>3</td><td><code>UI/Views/AddDeviceView.xaml</code></td><td>重写</td><td>扫描动画、流式列表、空态引导、按钮三态</td></tr>
+  <tr><td>4</td><td><code>ViewModels/MainViewModel.cs</code></td><td>修改</td><td>扫描流式回调 + debounce；ConnectAndAddAsync 改 PairAsync；KindOfName 换 DeviceKind</td></tr>
+  <tr><td>5</td><td><code>UI/Converters.cs</code> / 字符串资源 Zh·En</td><td>微调</td><td>other 图标；新增 adScan/adStopScan/adPairAndAdd/adEmptyHint1~3 等键</td></tr>
+  <tr><td>6</td><td><code>app/.../BluetoothManager.kt</code></td><td>修改</td><td>词表对齐 + handleFrame 收 sName 校准 DeviceEntity（约 15 行，可独立发版）</td></tr>
+</table>
+
+<h2><span class="n">6</span>验证清单</h2>
+<div class="card">
+  <ul class="tight">
+    <li><b>1</b> 手机删 PC 记录重扫 → PC 图标为电脑（广播名无 Windows 字样也能判对：CoD + 服务信号）</li>
+    <li><b>2</b> PC 扫描页 → 未配对手机 5~10s 内流式出现 → 「配对并添加」→ 系统弹窗 → 自动入设备栏且图标为电脑</li>
+    <li><b>3</b> 扫描动画 / 空态引导 / 按钮三态符合设计</li>
+    <li><b>4</b> 反向：PC 先配对手机 → 手机端扫描保存 PC → 图标为电脑</li>
+    <li><b>5</b> 自愈：把已保存 PC 记录改 PHONE → PC 发来一条文本 → 图标自动纠正 + 显示名更新为 sName</li>
+    <li><b>6</b> 回归：已配对重连、文本互发、文件互传不受影响</li>
+  </ul>
+</div>
+
+<h2><span class="n">7</span>实施顺序</h2>
+<div class="flow">
+  <div class="step"><span class="k">STEP 1</span><b>DeviceKind 分类器</b><p>独立可验证，先行</p></div>
+  <div class="step"><span class="k">STEP 2</span><b>Watcher 扫描 + 页面重做</b><p>主体工作</p></div>
+  <div class="step"><span class="k">STEP 3</span><b>资源与转换器</b><p>字符串/图标收尾</p></div>
+  <div class="step"><span class="k">STEP 4</span><b>Android 校准</b><p>改动最小，可独立发版</p></div>
+  <div class="step"><span class="k">STEP 5</span><b>双端联调</b><p>验证清单 1-6</p></div>
+</div>
+
+<footer>BlueSelf · windows-add-device-redesign-plan · 待确认后按第 7 节顺序实施</footer>
+</div>
+</body>
+</html>

@@ -22,7 +22,6 @@
     <s:String x:Key="actSetTarget">Set target</s:String>
 
     <s:String x:Key="wsTargetHint">Select a target device on the left</s:String>
-    <s:String x:Key="wsSendTo">To: </s:String>
     <s:String x:Key="wsPlaceholder">Enter text or add attachments below…</s:String>
     <s:String x:Key="wsAttachLabel">Attachments</s:String>
     <s:String x:Key="btnPaste">Paste</s:String>
@@ -58,6 +57,15 @@
     <s:String x:Key="stStorage">Transfer &amp; Storage</s:String>
     <s:String x:Key="stSavePath">Received files folder</s:String>
     <s:String x:Key="stChange">Change</s:String>
+
+    <s:String x:Key="adScan">Scan devices</s:String>
+    <s:String x:Key="adStopScan">Stop scan</s:String>
+    <s:String x:Key="adPairAndAdd">Pair &amp; add</s:String>
+    <s:String x:Key="adConnect">Connect</s:String>
+    <s:String x:Key="adConnected">Connected</s:String>
+    <s:String x:Key="adEmptyHint1">Make sure BlueSelf is open in the foreground on your phone</s:String>
+    <s:String x:Key="adEmptyHint2">Make sure phone Bluetooth is on</s:String>
+    <s:String x:Key="adEmptyHint3">Bring the phone closer and scan again</s:String>
 
     <!-- Add new device -->
     <s:String x:Key="adTitle">Add new device</s:String>

@@ -70,13 +70,66 @@ public sealed class DeviceItem : ObservableObject
 /// <summary>A nearby device shown on the "add new device" page.</summary>
 public sealed class ScannedDeviceItem : ObservableObject
 {
-    public required string Name { get; init; }
+    private string _name;
+    private bool _isPaired;
+
     public ulong Address { get; init; }
-    public bool IsPaired { get; init; }
-    /// <summary>Device icon kind (pc / tablet / phone), derived from the name.</summary>
-    public string Kind => MainViewModel.KindOfName(Name);
+    public BluetoothMajorClass MajorClass { get; private set; }
+
+    public ScannedDeviceItem() { _name = ""; }
+
+    public ScannedDeviceItem(Bluetooth.Core.ScannedDevice d)
+    {
+        _name = d.Name;
+        _isPaired = d.IsPaired;
+        Address = d.Address;
+        MajorClass = d.MajorClass;
+    }
+
+    public string Name { get => _name; private set => Set(ref _name, value); }
+    public bool IsPaired { get => _isPaired; private set => Set(ref _isPaired, value); }
+
+    private string _linkState = ""; // ""=未连接 | connected=已连接
+    /// <summary>连接态（扫描页点击连接成功后置 connected，行尾按钮变禁用）。</summary>
+    public string LinkState
+    {
+        get => _linkState;
+        set { if (Set(ref _linkState, value)) OnPropertyChanged(nameof(ActionText)); }
+    }
+
+    /// <summary>是否暴露 BlueSelf 服务（连接成功事实，最高权重信号）。</summary>
+    public bool HasBlueSelfService => LinkState == "connected";
+
+    /// <summary>四信号分类（当前仅名字 + CoD 两信号可用；连接成功后服务信号权重生效）。</summary>
+    public string Kind => Bluetooth.Core.DeviceKind.Classify(Name, MajorClass, HasBlueSelfService);
+
     /// <summary>A short address suffix for display.</summary>
     public string AddressText => (Address & 0xFFFFFFFF).ToString("X4");
+
+    /// <summary>行尾按钮文案：未配对 → 配对并添加；已配对未连 → 连接；已连接 → 禁用态文案。</summary>
+    public string ActionText => LinkState == "connected"
+        ? MainViewModel.Loc("adConnected", "已连接")
+        : IsPaired
+            ? MainViewModel.Loc("adConnect", "连接")
+            : MainViewModel.Loc("adPairAndAdd", "配对并添加");
+
+    /// <summary>流式更新：watcher 的 Updated 事件合并后刷新已有行。</summary>
+    public void RefreshFrom(Bluetooth.Core.ScannedDevice d)
+    {
+        Name = d.Name;
+        IsPaired = d.IsPaired;
+        MajorClass = d.MajorClass;
+        OnPropertyChanged(nameof(Kind));
+        OnPropertyChanged(nameof(AddressText));
+        OnPropertyChanged(nameof(ActionText));
+    }
+
+    /// <summary>连接/配对成功后由 VM 调用（PairAsync 结果回写）。</summary>
+    public void MarkPaired()
+    {
+        IsPaired = true;
+        OnPropertyChanged(nameof(ActionText));
+    }
 }
 
 /// <summary>A pending attachment chip in the composer.</summary>
@@ -328,6 +381,7 @@ public sealed class MainViewModel : ObservableObject
                 OnPropertyChanged(nameof(SelectedDevice));
                 OnPropertyChanged(nameof(HasSelectedDevice));
                 OnPropertyChanged(nameof(IsTargetRowVisible));
+                OnPropertyChanged(nameof(PlaceholderText));
                 Log($"{match.Name} 已接入");
             }
             else
@@ -419,6 +473,7 @@ public sealed class MainViewModel : ObservableObject
                     OnPropertyChanged(nameof(SelectedDevice));
                     OnPropertyChanged(nameof(HasSelectedDevice));
                     OnPropertyChanged(nameof(IsTargetRowVisible));
+                    OnPropertyChanged(nameof(PlaceholderText));
                 }
                 Log($"已发现 {Devices.Count} 台 BlueSelf 设备");
             });
@@ -454,6 +509,7 @@ public sealed class MainViewModel : ObservableObject
             {
                 OnPropertyChanged(nameof(HasSelectedDevice));
                 OnPropertyChanged(nameof(IsTargetRowVisible));
+                OnPropertyChanged(nameof(PlaceholderText));
                 ShowTargetHint = false;
             }
         }
@@ -461,6 +517,11 @@ public sealed class MainViewModel : ObservableObject
     public bool HasSelectedDevice => SelectedDevice != null;
     /// <summary>True when the target-device row should be shown (a device is selected and no hint is visible).</summary>
     public bool IsTargetRowVisible => SelectedDevice != null && !ShowTargetHint;
+
+    /// <summary>Editor watermark: guides to the device column when no target, normal hint once selected.</summary>
+    public string PlaceholderText => SelectedDevice == null
+        ? Loc("wsTargetHint", "请在左侧选择要发送的目标设备")
+        : Loc("wsPlaceholder", "在此输入要即时发送的文本内容，或点击下方添加附件……");
 
     /// <summary>Clicking a device: select it as target and (re)connect. Fires on every click,
     /// so the same device can be clicked again to retry regardless of the last result.</summary>
@@ -475,11 +536,22 @@ public sealed class MainViewModel : ObservableObject
         if (p is DeviceItem d) SelectAsTarget(d);
     });
 
-    /// <summary>设备行主体点击：在线 → 仅设为目标；离线/失败/连接中 → 不动作（建链只走显式按钮）。</summary>
+    /// <summary>设备行点击（单连接模型）：在线 → 仅设为目标；离线/失败 → 连接/重试；连接中 → 忽略。
+    /// 状态由圆点颜色表达，不再有独立动作按钮。</summary>
     public RelayCommand RowClickCommand => new(p =>
     {
         if (p is not DeviceItem d) return;
-        if (d.Status == DeviceStatus.Online) SelectAsTarget(d);
+        switch (d.Status)
+        {
+            case DeviceStatus.Online:
+                SelectAsTarget(d);
+                break;
+            case DeviceStatus.Offline:
+            case DeviceStatus.Failed:
+                _ = ConnectDeviceAsync(d);
+                break;
+            // Connecting：忽略点击，等待结果
+        }
     });
 
     private void SelectAsTarget(DeviceItem d)
@@ -491,6 +563,7 @@ public sealed class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(SelectedDevice));
         OnPropertyChanged(nameof(HasSelectedDevice));
         OnPropertyChanged(nameof(IsTargetRowVisible));
+        OnPropertyChanged(nameof(PlaceholderText));
         ConnectionLog.Write("Target set", $"{d.Name} (no reconnect)");
     }
 
@@ -511,6 +584,7 @@ public sealed class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(SelectedDevice));
         OnPropertyChanged(nameof(HasSelectedDevice));
         OnPropertyChanged(nameof(IsTargetRowVisible));
+        OnPropertyChanged(nameof(PlaceholderText));
         await ConnectAsync(device);
     }
 
@@ -610,43 +684,155 @@ public sealed class MainViewModel : ObservableObject
 
     private bool _isScanning;
     public bool IsScanning { get => _isScanning; set => Set(ref _isScanning, value); }
-    private bool _isScanningRunning;
 
-    public RelayCommandNoArg StartScanCommand => new(StartScan);
+    /// <summary>已发现设备数（扫描中状态文案实时显示）。</summary>
+    public int FoundCount => ScannedDevices.Count;
 
-    private async void StartScan()
+    /// <summary>列表是否有结果（控制空态区显隐）。</summary>
+    public bool HasResults => ScannedDevices.Count > 0;
+
+    /// <summary>停止扫描命令（离开页面时由视图调用）。</summary>
+    public RelayCommandNoArg StopScanCommand => new(() => StopScan(completed: false));
+
+    /// <summary>顶栏按钮文案：扫描中 → 停止扫描；否则 → 扫描设备。</summary>
+    public string ScanButtonText => IsScanning ? Loc("adStopScan", "停止扫描") : Loc("adScan", "扫描设备");
+
+    public RelayCommandNoArg StartScanCommand => new(ToggleScan);
+
+    private readonly Bluetooth.Core.DeviceWatcherScanner _watcherScanner = new();
+    private System.Timers.Timer? _debounceTimer;
+    private readonly HashSet<ulong> _pendingAdds = new();
+    private readonly HashSet<ulong> _pendingUpdates = new();
+    private readonly HashSet<ulong> _pendingRemoves = new();
+    private const int ScanDurationMs = 15_000;
+    private System.Timers.Timer? _autoStopTimer;
+
+    private void ToggleScan()
     {
-        if (_isScanningRunning) return;
-        _isScanningRunning = true;
+        if (IsScanning) { StopScan(completed: false); return; }
+        StartScan();
+    }
+
+    private void StartScan()
+    {
+        if (IsScanning) return;
+        ScannedDevices.Clear();
+        OnPropertyChanged(nameof(FoundCount));
+        OnPropertyChanged(nameof(HasResults));
         IsScanning = true;
+        OnPropertyChanged(nameof(ScanButtonText));
         Log("正在扫描附近设备…");
-        try
-        {
-            var items = await DeviceScanner.ScanAsync();
-            Post(() =>
-            {
-                ScannedDevices.Clear();
-                foreach (var s in items)
-                {
-                    ScannedDevices.Add(new ScannedDeviceItem
-                    {
-                        Name = s.Name,
-                        Address = s.Address,
-                        IsPaired = s.IsPaired
-                    });
-                }
-                Log($"扫描完成，发现 {ScannedDevices.Count} 台设备");
-            });
-        }
+
+        _pendingAdds.Clear(); _pendingUpdates.Clear(); _pendingRemoves.Clear();
+        _watcherScanner.DeviceAdded += OnWatcherDevice;
+        _watcherScanner.DeviceUpdated += OnWatcherDevice;
+        _watcherScanner.DeviceRemoved += OnWatcherRemoved;
+        try { _watcherScanner.Start(); }
         catch (Exception ex)
         {
-            Post(() => Log($"扫描失败: {ex.Message}"));
+            Log($"扫描启动失败: {ex.Message}");
+            StopScan(completed: false);
+            return;
         }
-        finally
+
+        _autoStopTimer = new System.Timers.Timer(ScanDurationMs) { AutoReset = false };
+        _autoStopTimer.Elapsed += (_, _) => Post(() => StopScan(completed: true));
+        _autoStopTimer.Start();
+    }
+
+    private void StopScan(bool completed)
+    {
+        if (!IsScanning) return;
+        _autoStopTimer?.Stop();
+        _autoStopTimer?.Dispose();
+        _autoStopTimer = null;
+        _watcherScanner.DeviceAdded -= OnWatcherDevice;
+        _watcherScanner.DeviceUpdated -= OnWatcherDevice;
+        _watcherScanner.DeviceRemoved -= OnWatcherRemoved;
+        _watcherScanner.Stop();
+        FlushPending();
+        IsScanning = false;
+        OnPropertyChanged(nameof(ScanButtonText));
+        Log(completed ? $"扫描完成，发现 {ScannedDevices.Count} 台设备" : "扫描已停止");
+    }
+
+    private void OnWatcherDevice(Bluetooth.Core.ScannedDevice d)
+    {
+        if (d.Address == 0) return;
+        // 只过滤明确的非对端类型（音频/外设/成像），名字未知的对端候选一律保留。
+        if (d.MajorClass is BluetoothMajorClass.AudioVideo
+            or BluetoothMajorClass.Peripheral
+            or BluetoothMajorClass.Imaging) return;
+        _pendingAdds.Add(d.Address);
+        _knownScanned[d.Address] = d;
+        ScheduleDebounce();
+    }
+
+    private readonly Dictionary<ulong, Bluetooth.Core.ScannedDevice> _knownScanned = new();
+
+    private void OnWatcherRemoved(ulong addr)
+    {
+        _pendingAdds.Remove(addr);
+        _pendingUpdates.Remove(addr);
+        if (_knownScanned.ContainsKey(addr)) _pendingRemoves.Add(addr);
+        ScheduleDebounce();
+    }
+
+    private void ScheduleDebounce()
+    {
+        lock (_debounceGate)
         {
-            Post(() => { IsScanning = false; });
-            _isScanningRunning = false;
+            if (_debounceTimer == null)
+            {
+                _debounceTimer = new System.Timers.Timer(800) { AutoReset = false };
+                _debounceTimer.Elapsed += (_, _) => Post(FlushPending);
+            }
+            _debounceTimer.Stop();
+            _debounceTimer.Start();
         }
+    }
+
+    private readonly object _debounceGate = new();
+
+    /// <summary>把 pending 合并去重后一次性应用到 UI 集合（必须已在 UI 线程调用）。</summary>
+    private void FlushPending()
+    {
+        lock (_debounceGate)
+        {
+            _debounceTimer?.Stop();
+            _debounceTimer = null;
+        }
+
+        foreach (var addr in _pendingRemoves)
+        {
+            var existing = ScannedDevices.FirstOrDefault(x => x.Address == addr);
+            if (existing != null) ScannedDevices.Remove(existing);
+            _knownScanned.Remove(addr);
+        }
+        _pendingRemoves.Clear();
+
+        foreach (var addr in _pendingUpdates)
+        {
+            if (!_knownScanned.TryGetValue(addr, out var d)) continue;
+            var existing = ScannedDevices.FirstOrDefault(x => x.Address == addr);
+            if (existing != null) existing.RefreshFrom(d);
+        }
+        _pendingUpdates.Clear();
+
+        foreach (var addr in _pendingAdds)
+        {
+            if (!_knownScanned.TryGetValue(addr, out var d)) continue;
+            var existing = ScannedDevices.FirstOrDefault(x => x.Address == addr);
+            if (existing == null)
+            {
+                ScannedDevices.Add(new ScannedDeviceItem(d));
+                OnPropertyChanged(nameof(FoundCount));
+            }
+            else existing.RefreshFrom(d);
+        }
+        _pendingAdds.Clear();
+        OnPropertyChanged(nameof(FoundCount));
+        OnPropertyChanged(nameof(HasResults));
     }
 
     private bool _isConnecting;
@@ -661,14 +847,14 @@ public sealed class MainViewModel : ObservableObject
         {
             await EnsureListeningAsync();
 
-            var device = await BluetoothDevice.FromBluetoothAddressAsync(item.Address);
-            if (device == null) { Log("未找到该蓝牙设备，请重试扫描"); return; }
+            var device = await BluetoothDevice.FromBluetoothAddressAsync(item.Address);            if (device == null) { Log("未找到该蓝牙设备，请重试扫描"); return; }
 
             if (!device.DeviceInformation.Pairing.IsPaired)
             {
                 Log($"正在与 {item.Name} 配对，请在两端确认…");
                 try
                 {
+                    // 系统配对弹窗走 SSP 新密钥，绕开 legacy link key 被拒的路径。
                     var pairing = await device.DeviceInformation.Pairing.PairAsync();
                     if (pairing != null &&
                         pairing.Status != DevicePairingResultStatus.Paired &&
@@ -696,7 +882,7 @@ public sealed class MainViewModel : ObservableObject
                 // 其余设备全部下线。
                 foreach (var d in Devices) if (d.Address != item.Address) d.Status = DeviceStatus.Offline;
 
-                // 加入设备栏并标记为在线；设为发送目标。
+                // 加入设备栏并标记为在线；设为发送目标；同步扫描页行状态。
                 var existing = Devices.FirstOrDefault(x => x.Address == item.Address);
                 if (existing != null)
                 {
@@ -705,13 +891,17 @@ public sealed class MainViewModel : ObservableObject
                 }
                 else
                 {
-                    var added = new DeviceItem { Name = item.Name, Address = item.Address, Kind = KindOfName(item.Name), Status = DeviceStatus.Online };
+                    var kind = Bluetooth.Core.DeviceKind.Classify(item.Name, item.MajorClass, hasBlueSelfService: true);
+                    var added = new DeviceItem { Name = item.Name, Address = item.Address, Kind = kind, Status = DeviceStatus.Online };
                     Devices.Add(added);
                     _selectedDevice = added;
                 }
                 OnPropertyChanged(nameof(SelectedDevice));
                 OnPropertyChanged(nameof(HasSelectedDevice));
                 OnPropertyChanged(nameof(IsTargetRowVisible));
+                OnPropertyChanged(nameof(PlaceholderText));
+                item.LinkState = "connected";
+                item.MarkPaired();
 
                 Log($"已连接并添加 {item.Name}");
                 CurrentView = AppView.Workspace;
@@ -735,6 +925,14 @@ public sealed class MainViewModel : ObservableObject
         set { if (Set(ref _text, value)) OnPropertyChanged(nameof(PendingSizeText)); }
     }
     public ObservableCollection<AttachmentItem> Attachments { get; } = new();
+
+    /// <summary>附件区显隐（集合增删不会触发实例绑定重求值，需显式通知）。</summary>
+    public bool HasPendingAttachments => Attachments.Count > 0;
+
+    private void NotifyAttachmentsChanged()
+    {
+        OnPropertyChanged(nameof(HasPendingAttachments));
+    }
 
     /// <summary>Pending content info shown above the send button (text bytes + attachment bytes).</summary>
     public string PendingSizeText
@@ -763,9 +961,17 @@ public sealed class MainViewModel : ObservableObject
     {
         var dlg = new Microsoft.Win32.OpenFileDialog { Multiselect = true, Title = "选择要发送的文件" };
         if (dlg.ShowDialog() != true) return;
-        foreach (var file in dlg.FileNames)
+        AddAttachmentFiles(dlg.FileNames);
+    }
+
+    /// <summary>把一组文件路径加入待发附件（去重），供文件对话框与拖拽共用。</summary>
+    public void AddAttachmentFiles(System.Collections.Generic.IEnumerable<string> paths)
+    {
+        var added = 0;
+        foreach (var path in paths)
         {
-            var fi = new FileInfo(file);
+            if (string.IsNullOrWhiteSpace(path) || !System.IO.File.Exists(path)) continue;
+            var fi = new FileInfo(path);
             if (Attachments.All(a => a.PathText != fi.FullName))
             {
                 Attachments.Add(new AttachmentItem
@@ -776,10 +982,15 @@ public sealed class MainViewModel : ObservableObject
                     PathText = fi.FullName,
                     Size = fi.Length
                 });
+                added++;
             }
         }
-        OnPropertyChanged(nameof(PendingSizeText));
-        Log($"已添加 {dlg.FileNames.Length} 个附件");
+        if (added > 0)
+        {
+            OnPropertyChanged(nameof(PendingSizeText));
+            NotifyAttachmentsChanged();
+            Log($"已添加 {added} 个附件");
+        }
     }
 
     /// <summary>Removes an attachment by reference from the composer.</summary>
@@ -787,6 +998,7 @@ public sealed class MainViewModel : ObservableObject
     {
         Attachments.Remove(item);
         OnPropertyChanged(nameof(PendingSizeText));
+        NotifyAttachmentsChanged();
     }
 
     public RelayCommandNoArg StartSendCommand => new(StartTransfer);
@@ -839,6 +1051,7 @@ public sealed class MainViewModel : ObservableObject
             AddOutgoing(sentContent);
             Attachments.Clear();
             OnPropertyChanged(nameof(PendingSizeText));
+            NotifyAttachmentsChanged();
         }
         catch (Exception ex)
         {
@@ -1067,9 +1280,10 @@ public sealed class MainViewModel : ObservableObject
             {
                 App.ApplyLanguage(value);
                 SaveSettings();
-                // 刷新依赖语言字符串的 UI（设备状态、待发大小）。
+                // 刷新依赖语言字符串的 UI（设备状态、待发大小、占位引导）。
                 foreach (var d in Devices) d.NotifyStatusText();
                 OnPropertyChanged(nameof(PendingSizeText));
+                OnPropertyChanged(nameof(PlaceholderText));
             }
         }
     }
@@ -1330,13 +1544,9 @@ public sealed class MainViewModel : ObservableObject
         _ => $"{bytes / 1024.0 / 1024.0 / 1024.0:0.##} GB"
     };
 
-    /// <summary>Device icon kind from a device name (PC/tablet/phone), mirrors Android.</summary>
+    /// <summary>Device icon kind: delegates to DeviceKind four-signal classifier (name-keyword tier).</summary>
     public static string KindOfName(string name)
-    {
-        if (name.Contains("电脑", StringComparison.Ordinal) || name.Contains("Windows", StringComparison.OrdinalIgnoreCase)) return "pc";
-        if (name.Contains("平板", StringComparison.Ordinal) || name.Contains("iPad", StringComparison.OrdinalIgnoreCase)) return "tablet";
-        return "phone";
-    }
+        => Bluetooth.Core.DeviceKind.Classify(name, (BluetoothMajorClass)0, hasBlueSelfService: false);
 
     private static string KindOfExt(string name)
     {

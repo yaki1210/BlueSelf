@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BlueSelf Windows 端 UI 优化方案 · V2</title>
+<style>
+  :root {
+    --bg: #101014; --panel: #1a1c22; --card: #20232b; --border: #33363f; --border-subtle: #2a2d35;
+    --text: #f4f4f5; --text-2: #c7c9cf; --muted: #8e9096; --brand: #6d5df2; --brand-light: #2a2740;
+    --green: #34d399; --yellow: #f5b50b; --red: #f87171; --gray: #9ca3af;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif; line-height: 1.65; padding: 48px 24px; }
+  .wrap { max-width: 960px; margin: 0 auto; }
+  header { margin-bottom: 36px; }
+  .kicker { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); letter-spacing: .12em; text-transform: uppercase; margin-bottom: 12px; }
+  .kicker::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--yellow); }
+  h1 { font-size: 30px; font-weight: 700; letter-spacing: -.01em; margin-bottom: 10px; }
+  .sub { color: var(--muted); font-size: 14px; }
+  h2 { font-size: 19px; margin: 44px 0 16px; padding-top: 24px; border-top: 1px solid var(--border-subtle); }
+  h2 .no { color: var(--brand); margin-right: 8px; font-family: Consolas, monospace; font-size: 15px; }
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13.5px; background: var(--panel); border-radius: 12px; overflow: hidden; border: 1px solid var(--border-subtle); }
+  th { text-align: left; padding: 10px 14px; color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: .04em; border-bottom: 1px solid var(--border); background: var(--card); }
+  td { padding: 11px 14px; border-bottom: 1px solid var(--border-subtle); vertical-align: top; color: var(--text-2); }
+  tr:last-child td { border-bottom: none; }
+  td code, li code, p code { font-family: Consolas, "Cascadia Code", monospace; font-size: 12px; background: var(--brand-light); color: #c7c9ff; padding: 1px 6px; border-radius: 5px; }
+  .card { background: var(--panel); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 20px 22px; margin: 14px 0; }
+  .card h3 { font-size: 15px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .tag { font-size: 11px; font-weight: 700; padding: 2px 10px; border-radius: 999px; }
+  .tag.rec { background: rgba(52,211,153,.15); color: var(--green); }
+  .tag.alt { background: var(--brand-light); color: #c7c9ff; }
+  .card p, .card li { font-size: 13.5px; color: var(--text-2); }
+  .card ul { padding-left: 20px; margin: 8px 0; }
+  .card li { margin: 5px 0; }
+  .file { font-family: Consolas, monospace; font-size: 12px; color: var(--muted); background: var(--card); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 2px 8px; display: inline-block; margin-top: 8px; }
+  .findings { display: grid; grid-template-columns: 1fr; gap: 12px; margin: 14px 0; }
+  .finding { background: var(--panel); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 14px 18px; font-size: 13.5px; color: var(--text-2); }
+  .finding b { color: var(--text); }
+  .finding .yes { color: var(--red); font-weight: 700; }
+  ol.steps { counter-reset: s; list-style: none; padding: 0; margin: 14px 0; }
+  ol.steps li { counter-increment: s; position: relative; padding: 0 0 18px 44px; }
+  ol.steps li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 28px; height: 28px; border-radius: 50%; background: var(--brand-light); color: #c7c9ff; font-weight: 700; font-size: 13px; display: flex; align-items: center; justify-content: center; font-family: Consolas, monospace; }
+  ol.steps li::after { content: ""; position: absolute; left: 13.5px; top: 32px; bottom: 2px; width: 1px; background: var(--border); }
+  ol.steps li:last-child::after { display: none; }
+  ol.steps .t { font-weight: 600; font-size: 14px; color: var(--text); }
+  ol.steps .d { font-size: 13px; color: var(--muted); }
+  .note { background: var(--card); border-left: 3px solid var(--yellow); border-radius: 8px; padding: 12px 16px; font-size: 13px; color: var(--text-2); margin: 16px 0; }
+  .qa { background: var(--panel); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 14px 18px; margin: 10px 0; font-size: 13.5px; color: var(--text-2); }
+  .qa b { color: var(--text); }
+  footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--border-subtle); font-size: 12px; color: var(--muted); }
+  @media (max-width: 720px) { body { padding: 28px 16px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">V2 修订稿 · 待确认后实施</div>
+  <h1>BlueSelf Windows 端 UI 优化方案</h1>
+  <div class="sub">V2 按你的反馈修订：托盘与目标区彻底去空腔 · 状态不再重复显示 · 图标硬编码已查实 · 目标展示二选一</div>
+</header>
+
+<h2><span class="no">01</span>需求变更（V1 → V2）</h2>
+<table>
+  <tr><th>项</th><th>V1 方案</th><th>V2 修订</th></tr>
+  <tr><td>附件托盘</td><td>有附件时保留托盘框（降对比）</td><td><b>任何时候都不要空腔/边框</b> — 有附件裸排 chip，无附件整体隐藏</td></tr>
+  <tr><td>发送目标行</td><td>保留目标行，徽标改圆点</td><td><b>去掉整个目标行容器</b>；不显示状态；只留设备名；空态无空腔</td></tr>
+  <tr><td>状态徽标</td><td>圆点化保留</td><td><b>取消</b> — 状态左侧列表已可见，不重复</td></tr>
+  <tr><td>目标展示形态</td><td>单独一行展示</td><td>二选一：<b>方案 A</b> 仅左侧列表表达 / <b>方案 B</b> 保留行但去容器裸排</td></tr>
+</table>
+
+<h2><span class="no">02</span>查证：目标行手机图标是硬编码</h2>
+<div class="findings">
+  <div class="finding"><b>发送目标行（WorkspaceView.xaml）</b>：图标写死 <code>&#x26;#xE8EA;</code>（手机）— <span class="yes">硬编码实锤</span>，与设备真实类型无关，连一台 PC 也显示手机图标。</div>
+  <div class="finding"><b>左侧设备列表（DeviceListItem.xaml）</b>：<code>Binding Kind + DeviceKindToGlyphConverter</code> — 正确做法。设备 Kind（"pc"/"tablet"/"phone"，按设备名推导）驱动：pc → \uE968 电脑，tablet → \uE970 平板，其他 → \uE8EA 手机。</div>
+  <div class="finding"><b>修复</b>：方案 B 下目标行改为绑定 <code>SelectedDevice.Kind</code> 复用同一转换器（转换器需提升为共享资源）；方案 A 下整行删除，问题随之消失。</div>
+</div>
+
+<h2><span class="no">03</span>候选方案：发送目标展示</h2>
+
+<div class="card">
+  <h3>方案 A · 只在左侧设备栏表达 <span class="tag rec">推荐</span></h3>
+  <ul>
+    <li>删除编辑器顶部的目标行与空态提示条，目标信息完全由左侧承担</li>
+    <li>左侧列表已有完整表达：选中行品牌色描边高亮 + 状态圆点 + 状态文字</li>
+    <li>编辑器恢复纯净写作区：上无提示条、下无托盘框，只有文本 + 底部操作行</li>
+    <li>未选目标点发送：走现有三合一校验，引导方式见待确认项 2</li>
+    <li>En.xaml 的 To: 间距问题随行删除一并消失</li>
+  </ul>
+  <p style="margin-top:8px"><b style="color:var(--green)">优点</b>：去重（状态/目标左侧已有）、编辑区最大化留白、布局最自然。<b style="color:var(--yellow)">代价</b>：发送时需扫一眼左侧确认目标（选中高亮已足够醒目）。</p>
+</div>
+
+<div class="card">
+  <h3>方案 B · 保留目标行，去容器裸排 <span class="tag alt">备选</span></h3>
+  <ul>
+    <li>目标行继续存在，但无 Border、无底色、无边框，一行小字自然融入编辑区顶部</li>
+    <li>内容只有：<code>[设备图标(随Kind)] 设备名</code>（品牌色），删状态徽标、删"发送目标："前缀（或极简化）</li>
+    <li>未选目标：整行不渲染，编辑区顶无任何占位</li>
+    <li>若保留 "To:" 前缀，按 V1 方案修 En.xaml 间距（Margin 替代尾随空格）</li>
+  </ul>
+  <p style="margin-top:8px"><b style="color:var(--green)">优点</b>：编辑器内有明确的"当前目标"锚点。<b style="color:var(--yellow)">代价</b>：信息与左侧列表重复。</p>
+</div>
+
+<h2><span class="no">04</span>无争议任务（两方案共有，已确认）</h2>
+<ol class="steps">
+  <li><div class="t">窗口圆角</div><div class="d">Win11 DWM API · 最大化自动切直角 · Win10 静默降级 · MainWindow.xaml.cs 约 +30 行</div></li>
+  <li><div class="t">附件托盘去容器</div><div class="d">删 Border 空腔，chip 裸排（间距由 chip 自身 Margin 提供），无附件时 Collapsed · WorkspaceView.xaml</div></li>
+  <li><div class="t">目标行图标跟随设备 Kind</div><div class="d">方案 B 适用：绑定 SelectedDevice.Kind + DeviceKindToGlyphConverter；方案 A 整行删除</div></li>
+  <li><div class="t">硬编码色值清理</div><div class="d">#065F46 等随目标行重构一并清除，全部走主题资源</div></li>
+</ol>
+
+<h2><span class="no">05</span>待确认</h2>
+<div class="qa"><b>1. 方案 A 还是 B？</b> 推荐 A：目标/状态信息左侧已完整表达，编辑区去框后最干净。</div>
+<div class="qa"><b>2.（方案 A）未选目标点发送的引导方式</b>：a 维持日志提示 / b 发送按钮置灰 / c placeholder 动态化为"请先在左侧选择目标设备"——推荐 c，最轻量自然。</div>
+<div class="qa"><b>3.（方案 B）目标行是否保留 "To:"/"发送目标：" 前缀？</b> 保留则需同步修 En.xaml 间距；删除则更极简。</div>
+
+<div class="note">确认后执行顺序：窗口圆角 → 托盘去容器 → 目标区改造（按所选方案）→ 色值清理 → 编译 → 启动截图对比 → 深/浅主题 × 中/英语言全验。</div>
+
+<footer>BlueSelf Windows UI 优化 · V2 调研稿 · 实施待用户确认 · 2026-08-28</footer>
+</div>
+</body>
+</html>

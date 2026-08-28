@@ -33,6 +33,8 @@ windows/**/obj/
 # AI assistant metadata (local tooling, not project source)
 .agents/
 .openclaw/
+.openclaw-attachments/
+.cluster/
 memory/
 AGENTS.md
 HEARTBEAT.md

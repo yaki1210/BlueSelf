@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BlueSelf Windows UI 优化 · 最终计划（方案 A）</title>
+<style>
+  :root {
+    --bg: #101014; --panel: #1a1c22; --card: #20232b; --border: #33363f; --border-subtle: #2a2d35;
+    --text: #f4f4f5; --text-2: #c7c9cf; --muted: #8e9096; --brand: #6d5df2; --brand-light: #2a2740;
+    --green: #34d399; --yellow: #f5b50b; --red: #f87171; --gray: #9ca3af;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif; line-height: 1.65; padding: 48px 24px; }
+  .wrap { max-width: 960px; margin: 0 auto; }
+  header { margin-bottom: 32px; }
+  .kicker { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); letter-spacing: .12em; text-transform: uppercase; margin-bottom: 12px; }
+  .kicker::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+  h1 { font-size: 30px; font-weight: 700; letter-spacing: -.01em; margin-bottom: 10px; }
+  .sub { color: var(--muted); font-size: 14px; }
+  h2 { font-size: 19px; margin: 44px 0 16px; padding-top: 24px; border-top: 1px solid var(--border-subtle); }
+  h2 .no { color: var(--brand); margin-right: 8px; font-family: Consolas, monospace; font-size: 15px; }
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13.5px; background: var(--panel); border-radius: 12px; overflow: hidden; border: 1px solid var(--border-subtle); }
+  th { text-align: left; padding: 10px 14px; color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: .04em; border-bottom: 1px solid var(--border); background: var(--card); }
+  td { padding: 11px 14px; border-bottom: 1px solid var(--border-subtle); vertical-align: top; color: var(--text-2); }
+  tr:last-child td { border-bottom: none; }
+  td code, li code, p code { font-family: Consolas, "Cascadia Code", monospace; font-size: 12px; background: var(--brand-light); color: #c7c9ff; padding: 1px 6px; border-radius: 5px; }
+  .decisions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 16px 0; }
+  .decision { background: var(--panel); border: 1px solid rgba(52,211,153,.3); border-radius: 12px; padding: 16px 18px; }
+  .decision .k { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .decision .v { font-size: 14.5px; font-weight: 600; color: var(--text); }
+  .decision .v::before { content: "✓ "; color: var(--green); }
+  ol.steps { counter-reset: s; list-style: none; padding: 0; margin: 14px 0; }
+  ol.steps li { counter-increment: s; position: relative; padding: 0 0 20px 44px; }
+  ol.steps li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 28px; height: 28px; border-radius: 50%; background: var(--brand-light); color: #c7c9ff; font-weight: 700; font-size: 13px; display: flex; align-items: center; justify-content: center; font-family: Consolas, monospace; }
+  ol.steps li::after { content: ""; position: absolute; left: 13.5px; top: 32px; bottom: 4px; width: 1px; background: var(--border); }
+  ol.steps li:last-child::after { display: none; }
+  ol.steps .t { font-weight: 600; font-size: 14px; color: var(--text); }
+  ol.steps .f { font-family: Consolas, monospace; font-size: 12px; color: #c7c9ff; margin: 2px 0; }
+  ol.steps .d { font-size: 13px; color: var(--muted); }
+  .note { background: var(--card); border-left: 3px solid var(--green); border-radius: 8px; padding: 12px 16px; font-size: 13px; color: var(--text-2); margin: 16px 0; }
+  footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--border-subtle); font-size: 12px; color: var(--muted); }
+  @media (max-width: 720px) { .decisions { grid-template-columns: 1fr; } body { padding: 28px 16px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">方案 A · 计划已确认 · 待实施</div>
+  <h1>BlueSelf Windows 端 UI 优化 · 最终计划</h1>
+  <div class="sub">窗口圆角 · 编辑区去框纯净版 · 附件裸排 · placeholder 引导 &nbsp;|&nbsp; 2026-08-28</div>
+</header>
+
+<h2><span class="no">00</span>已确认决策</h2>
+<div class="decisions">
+  <div class="decision"><div class="k">发送目标展示</div><div class="v">方案 A：只留左侧设备栏表达，删除编辑器顶部目标行</div></div>
+  <div class="decision"><div class="k">未选目标引导</div><div class="v">placeholder 动态化为"请在左侧选择要发送的目标设备"</div></div>
+  <div class="decision"><div class="k">附件托盘</div><div class="v">彻底去容器：chip 裸排，无附件隐藏</div></div>
+  <div class="decision"><div class="k">窗口</div><div class="v">Win11 DWM 圆角，最大化直角，Win10 静默降级</div></div>
+</div>
+
+<h2><span class="no">01</span>实施步骤</h2>
+<ol class="steps">
+  <li>
+    <div class="t">窗口圆角</div>
+    <div class="f">UI/MainWindow.xaml.cs</div>
+    <div class="d">P/Invoke DwmSetWindowAttribute：圆角(33→ROUND 2) + 去系统描边(34→COLOR_NONE)；StateChanged 监听最大化(→DONOTROUND 1)/还原(→ROUND 2)；try/catch 静默降级 Win10。约 +35 行。</div>
+  </li>
+  <li>
+    <div class="t">删除编辑器顶部目标区</div>
+    <div class="f">UI/Views/WorkspaceView.xaml</div>
+    <div class="d">删 Row 0 整块 Border（含 ShowTargetHint 提示条 + IsTargetRowVisible 目标行）；Grid 4 行减为 3 行，行索引前移；硬编码 #065F46 与手机图标硬编码随行消失。</div>
+  </li>
+  <li>
+    <div class="t">附件托盘去容器</div>
+    <div class="f">UI/Views/WorkspaceView.xaml</div>
+    <div class="d">删托盘 Border（SidebarBgBrush 底 + 边框），保留横向 ItemsControl + AttachmentChip（chip 自带间距）；无附件时 ItemsControl Collapsed，复用现有 HasItemsToVisibilityConverter。</div>
+  </li>
+  <li>
+    <div class="t">未选目标 placeholder 引导</div>
+    <div class="f">WorkspaceView.xaml + MainViewModel.cs</div>
+    <div class="d">新增 PlaceholderText 计算属性：未选目标 → wsTargetHint，已选 → wsPlaceholder；SelectedDevice 全部赋值点补通知；占位 TextBlock 改绑该属性；语言切换同步刷新。发送三合一校验不动。</div>
+  </li>
+  <li>
+    <div class="t">左侧选中态微调（可选）</div>
+    <div class="f">App.xaml</div>
+    <div class="d">FluentListBoxItem 选中态已有 BrandLightBrush 底 + BrandBrush 描边，目测清晰则跳过；目标设备行"设为目标"按钮文案本已表达当前目标。</div>
+  </li>
+  <li>
+    <div class="t">文案资源清理</div>
+    <div class="f">Resources/Strings/Zh.xaml · En.xaml</div>
+    <div class="d">删除不再被引用的 wsSendTo（两语言），En 的 To: 尾随空格问题随之消失；wsTargetHint 保留转用作引导文案；wsAttachLabel 检查引用后处理。</div>
+  </li>
+  <li>
+    <div class="t">编译 + 截图验证</div>
+    <div class="f">dotnet build → 启动 → 截图</div>
+    <div class="d">按下方验证矩阵逐项核对，深/浅主题 × 中/英语言全验。</div>
+  </li>
+</ol>
+
+<h2><span class="no">02</span>验证矩阵</h2>
+<table>
+  <tr><th>验证点</th><th>预期</th></tr>
+  <tr><td>窗口四角 / 最大化还原</td><td>Win11 圆角无系统描边；最大化直角、还原恢复圆角，无残缺</td></tr>
+  <tr><td>编辑区顶部</td><td>无目标行、无提示条，纯文本区直达顶栏</td></tr>
+  <tr><td>无附件 / 有附件</td><td>托盘区完全消失直通操作行 / chip 裸排无边框无底色</td></tr>
+  <tr><td>未选目标</td><td>placeholder = "请在左侧选择要发送的目标设备"；点发送仍被三合一校验拦截并写日志</td></tr>
+  <tr><td>选中设备后</td><td>placeholder 恢复正常文案；左侧行品牌色高亮 + 状态圆点</td></tr>
+  <tr><td>主题 × 语言</td><td>深/浅主题、中文/English 四组合各截图核对 placeholder 与高亮</td></tr>
+</table>
+
+<h2><span class="no">03</span>涉及文件与不改动项</h2>
+<table>
+  <tr><th>文件</th><th>改动</th></tr>
+  <tr><td><code>UI/MainWindow.xaml.cs</code></td><td>新增 DWM P/Invoke + StateChanged（约 +35 行）</td></tr>
+  <tr><td><code>UI/Views/WorkspaceView.xaml</code></td><td>删目标区、删托盘 Border、placeholder 改绑（净减约 30 行）</td></tr>
+  <tr><td><code>ViewModels/MainViewModel.cs</code></td><td>新增 PlaceholderText + 通知点（约 +10 行）</td></tr>
+  <tr><td><code>Resources/Strings/Zh.xaml</code> / <code>En.xaml</code></td><td>删 wsSendTo；wsTargetHint 转用作引导文案</td></tr>
+  <tr><td><code>App.xaml</code></td><td>（可选）FluentListBoxItem 选中态微调</td></tr>
+</table>
+<div class="note">不改动：业务逻辑、蓝牙连接流程、发送校验、Inbox / Settings / AddDevice 视图、主题色板。全部为 UI 层改动，git 可一键回退；DWM API 在 Win10 失败仅表现为直角，不影响功能。</div>
+
+<footer>BlueSelf Windows UI 优化 · 最终计划（方案 A）· 已确认待实施 · 2026-08-28</footer>
+</div>
+</body>
+</html>

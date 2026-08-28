@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BlueSelf Windows UI · 合并实施计划（方案 A + AddDevice 重做）</title>
+<style>
+  :root {
+    --bg: #101014; --panel: #1a1c22; --card: #20232b; --border: #33363f; --border-subtle: #2a2d35;
+    --text: #f4f4f5; --text-2: #c7c9cf; --muted: #8e9096; --brand: #6d5df2; --brand-light: #2a2740;
+    --green: #34d399; --yellow: #f5b50b; --red: #f87171; --gray: #9ca3af;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif; line-height: 1.65; padding: 48px 24px; }
+  .wrap { max-width: 960px; margin: 0 auto; }
+  header { margin-bottom: 32px; }
+  .kicker { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); letter-spacing: .12em; text-transform: uppercase; margin-bottom: 12px; }
+  .kicker::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--yellow); }
+  h1 { font-size: 29px; font-weight: 700; letter-spacing: -.01em; margin-bottom: 10px; }
+  .sub { color: var(--muted); font-size: 14px; }
+  h2 { font-size: 19px; margin: 44px 0 16px; padding-top: 24px; border-top: 1px solid var(--border-subtle); }
+  h2 .no { color: var(--brand); margin-right: 8px; font-family: Consolas, monospace; font-size: 15px; }
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; background: var(--panel); border-radius: 12px; overflow: hidden; border: 1px solid var(--border-subtle); }
+  th { text-align: left; padding: 9px 13px; color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: .04em; border-bottom: 1px solid var(--border); background: var(--card); }
+  td { padding: 9px 13px; border-bottom: 1px solid var(--border-subtle); vertical-align: top; color: var(--text-2); }
+  tr:last-child td { border-bottom: none; }
+  td code, li code, p code { font-family: Consolas, "Cascadia Code", monospace; font-size: 12px; background: var(--brand-light); color: #c7c9ff; padding: 1px 5px; border-radius: 5px; }
+  .conflict { color: var(--yellow); font-weight: 700; }
+  .ok { color: var(--green); font-weight: 700; }
+  ol.steps { counter-reset: s; list-style: none; padding: 0; margin: 14px 0; }
+  ol.steps li { counter-increment: s; position: relative; padding: 0 0 20px 44px; }
+  ol.steps li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 28px; height: 28px; border-radius: 50%; background: var(--brand-light); color: #c7c9ff; font-weight: 700; font-size: 13px; display: flex; align-items: center; justify-content: center; font-family: Consolas, monospace; }
+  ol.steps li::after { content: ""; position: absolute; left: 13.5px; top: 32px; bottom: 4px; width: 1px; background: var(--border); }
+  ol.steps li:last-child::after { display: none; }
+  ol.steps .t { font-weight: 600; font-size: 14px; color: var(--text); }
+  ol.steps .d { font-size: 13px; color: var(--muted); }
+  .badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 1px 8px; border-radius: 999px; margin-left: 8px; vertical-align: middle; }
+  .badge.a { background: rgba(52,211,153,.15); color: var(--green); }
+  .badge.b { background: var(--brand-light); color: #c7c9ff; }
+  .note { background: var(--card); border-left: 3px solid var(--yellow); border-radius: 8px; padding: 12px 16px; font-size: 13px; color: var(--text-2); margin: 16px 0; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0; }
+  .col { background: var(--panel); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 18px; }
+  .col h3 { font-size: 13px; color: var(--muted); margin-bottom: 10px; letter-spacing: .06em; }
+  .col li { font-size: 13px; color: var(--text-2); margin: 6px 0 6px 18px; }
+  .col ul { padding-left: 4px; }
+  .qa { background: var(--panel); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 14px 18px; margin: 10px 0; font-size: 13.5px; color: var(--text-2); }
+  .qa b { color: var(--text); }
+  footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--border-subtle); font-size: 12px; color: var(--muted); }
+  @media (max-width: 720px) { .grid2 { grid-template-columns: 1fr; } body { padding: 28px 16px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">合并计划 · 待确认后实施</div>
+  <h1>BlueSelf Windows UI 优化 · 合并实施计划</h1>
+  <div class="sub">方案 A（工作区 UI）+ AddDevice 重做（扫描/分类/配对） · 2026-08-28</div>
+</header>
+
+<h2><span class="no">01</span>文件冲突矩阵</h2>
+<table>
+  <tr><th>文件</th><th>方案 A <span class="badge a">UI</span></th><th>AddDevice <span class="badge b">蓝牙</span></th><th>冲突</th></tr>
+  <tr><td><code>MainWindow.xaml.cs</code></td><td>DWM 圆角 P/Invoke</td><td>—</td><td class="ok">无</td></tr>
+  <tr><td><code>WorkspaceView.xaml</code></td><td>删目标区 / 托盘去容器 / placeholder</td><td>—</td><td class="ok">无</td></tr>
+  <tr><td><code>AddDeviceView.xaml</code></td><td>—</td><td>重写（动画 / 流式列表 / 三态按钮 / 空态）</td><td class="ok">无</td></tr>
+  <tr><td><code>MainViewModel.cs</code></td><td>+PlaceholderText 与通知点</td><td>扫描流式化 / PairAsync / DeviceKind 替换 / ScannedDeviceItem 扩展</td><td class="conflict">同文件不同区域，合并编辑</td></tr>
+  <tr><td><code>Converters.cs</code></td><td>—</td><td>KindToGlyph 支持 "other"</td><td class="ok">无</td></tr>
+  <tr><td><code>Zh.xaml / En.xaml</code></td><td>删 wsSendTo；wsTargetHint 转用</td><td>新增 adScan / adStopScan / adPairAndAdd / adConnect / adConnected / adEmptyHint1~3</td><td class="conflict">同文件，键集不相交</td></tr>
+  <tr><td><code>DeviceKind.cs</code> / <code>DeviceWatcherScanner.cs</code>（新增）</td><td>—</td><td>四信号分类器 / 流式扫描器</td><td class="ok">无</td></tr>
+  <tr><td><code>DeviceScanner.cs</code> / <code>Discovery.cs</code></td><td>—</td><td>删除 / IsLikelyPeerDevice 放宽改调 DeviceKind</td><td class="ok">无</td></tr>
+  <tr><td><code>BluetoothManager.kt</code>（Android）</td><td>—</td><td>词表对齐 + sName 校准（约 15 行）</td><td class="ok">无</td></tr>
+  <tr><td><code>App.xaml</code></td><td>（可选）FluentListBoxItem 微调</td><td>—</td><td class="ok">无</td></tr>
+</table>
+<p style="font-size:13px;color:var(--muted)">注：<code>wsRefresh</code> 键保留——工作区设备栏刷新按钮仍引用，仅 AddDevice 顶栏不再误用。</p>
+
+<h2><span class="no">02</span>合并实施顺序（每阶段可编译可验证）</h2>
+<ol class="steps">
+  <li><div class="t">方案 A 全部 7 步 <span class="badge a">UI</span></div><div class="d">窗口圆角 → 删目标区 → 托盘去容器 → placeholder 引导 → 文案清理 → 编译 → 截图验证。纯 UI 层，独立可验。</div></li>
+  <li><div class="t">AddDevice · 分类器 <span class="badge b">蓝牙</span></div><div class="d">新增 DeviceKind.cs 四信号分类器；KindOfName / IsLikelyPeerDevice 调用点替换；过滤放宽。</div></li>
+  <li><div class="t">AddDevice · 扫描重做 <span class="badge b">蓝牙</span></div><div class="d">新增 DeviceWatcherScanner.cs；MainViewModel 扫描流式化（800ms debounce）；ConnectAndAddAsync 改走 DeviceInformation.PairAsync；删除 DeviceScanner.cs。</div></li>
+  <li><div class="t">AddDevice · UI 重做 <span class="badge b">蓝牙</span></div><div class="d">AddDeviceView.xaml 重写：修复横幅图标 Text 误绑 BoolToVis 的实锤 bug（补蓝牙 glyph + 扫描旋转动画）、流式列表、行尾按钮三态（配对并添加/连接/已连接✓）、空态引导；Converters 支持 "other"；新增资源键。</div></li>
+  <li><div class="t">AddDevice · Android <span class="badge b">蓝牙</span></div><div class="d">BluetoothManager.kt：determineDeviceType 词表与 Windows 对齐；handleFrame 收到 TXT 后按 sName 校准 DeviceEntity（图标自愈）。约 15 行，独立构建 APK。</div></li>
+  <li><div class="t">总验证</div><div class="d">方案 A 9 项 + AddDevice 6 项验证矩阵合并执行；每阶段结束 dotnet build，阶段 1/4 截图，阶段 5 gradlew assembleDebug。</div></li>
+</ol>
+
+<h2><span class="no">03</span>实施中已核实的事实</h2>
+<div class="note">
+  ① AddDevice 横幅图标 bug 比原计划描述更实锤：<code>Text="{Binding IsScanning, Converter={StaticResource BoolToVis}}"</code> 把 Visibility 结构体当文字绑定 → 必然显示异常，与截图吻合。② 顶栏按钮确实误用 <code>wsRefresh</code>（"刷新设备列表"）。③ <code>ScannedDeviceItem.Kind</code> 现为纯名字猜测（KindOfName），将被四信号替换。④ <code>IsLikelyPeerDevice</code> 的激进过滤是"扫不到新设备"的第二根因。
+</div>
+
+<h2><span class="no">04</span>验证分工</h2>
+<div class="grid2">
+  <div class="col">
+    <h3>我可自动完成</h3>
+    <ul>
+      <li>双端构建（dotnet build / gradlew assembleDebug）</li>
+      <li>PC 端启动截图：工作区新布局、AddDevice 空态 / 扫描动画 / 列表态</li>
+      <li>深浅主题 × 中英语言组合核对</li>
+    </ul>
+  </div>
+  <div class="col">
+    <h3>需你配合真机</h3>
+    <ul>
+      <li>蓝牙实际扫描发现（手机前台 + 可发现）</li>
+      <li>系统配对弹窗两端确认</li>
+      <li>手机端 PC 图标验证 + sName 自愈验证</li>
+      <li>互发文本/文件回归</li>
+    </ul>
+  </div>
+</div>
+
+<h2><span class="no">05</span>待确认项</h2>
+<div class="qa"><b>1. 实施节奏</b>：一次性跑完 6 个阶段（推荐，一次构建一轮验证），还是先只做阶段 1（方案 A）验收后再做 AddDevice？</div>
+<div class="qa"><b>2. AddDevice 计划中标注"实现时调试为准"的两处</b>：AQS 属性键与 MAC 地址解析格式——按原计划策略"先打印属性再固化"，遇到 Realtek 驱动属性缺失时退化为名字+sName 双信号，可接受？</div>
+<div class="qa"><b>3. 旧 DeviceScanner.cs 直接删除</b>（git 有历史可回退），还是先保留改名废弃一版？原计划写的是删除，默认按删除执行。</div>
+
+<footer>BlueSelf Windows UI 优化 · 合并实施计划 · 方案 A + AddDevice · 2026-08-28</footer>
+</div>
+</body>
+</html>

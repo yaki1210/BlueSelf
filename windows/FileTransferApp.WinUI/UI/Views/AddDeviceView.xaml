@@ -6,17 +6,23 @@
         <converters:BoolToVisibilityConverter x:Key="BoolToVis" />
         <converters:DeviceKindToGlyphConverter x:Key="KindToGlyph" />
         <converters:HasItemsToVisibilityConverter x:Key="HasItemsToVis" />
+        <converters:LinkStateToEnabledConverter x:Key="LinkStateToEnabled" />
+        <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
+        <!-- 扫描动画：围绕中心旋转的蓝牙 glyph -->
+        <Storyboard x:Key="ScanSpin" RepeatBehavior="Forever">
+            <DoubleAnimation Storyboard.TargetName="scanGlyph" Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
+                             From="0" To="360" Duration="0:0:1.6" />
+        </Storyboard>
     </UserControl.Resources>
 
-    <Grid Margin="28,20,28,24">
+    <Grid Margin="28,20,28,24" Loaded="OnViewLoaded">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- 顶栏：返回 + 标题 + 刷新 -->
+        <!-- 顶栏：返回 + 标题 + 扫描按钮（两态） -->
         <Grid Grid.Row="0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
@@ -34,14 +40,24 @@
             <Button Grid.Column="2" Style="{StaticResource SecondaryButton}"
                     Command="{Binding StartScanCommand}" VerticalAlignment="Center">
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="&#xE72C;" FontFamily="{StaticResource IconFont}" FontSize="13"
-                               VerticalAlignment="Center" Margin="0,0,6,0" />
-                    <TextBlock Text="{DynamicResource wsRefresh}" VerticalAlignment="Center" />
+                    <TextBlock FontFamily="{StaticResource IconFont}" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Text" Value="&#xE72C;" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsScanning}" Value="True">
+                                        <Setter Property="Text" Value="&#xE71A;" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <TextBlock Text="{Binding ScanButtonText}" VerticalAlignment="Center" />
                 </StackPanel>
             </Button>
         </Grid>
 
-        <!-- 扫描状态横幅 -->
+        <!-- 扫描状态横幅：蓝牙 glyph（修复原 Text 误绑）+ 计数 -->
         <Border Grid.Row="1" Background="{DynamicResource SurfaceBrush}"
                 BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1"
                 CornerRadius="12" Padding="14,12" Margin="0,18,0,0">
@@ -53,16 +69,20 @@
                 </Grid.ColumnDefinitions>
 
                 <Border Grid.Column="0" Width="36" Height="36" CornerRadius="18" Background="{DynamicResource SurfaceAltBrush}">
-                    <TextBlock Text="{Binding IsScanning, Converter={StaticResource BoolToVis}}" FontFamily="{StaticResource IconFont}" FontSize="16"
-                               Foreground="{DynamicResource BrandBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <TextBlock x:Name="scanGlyph" Text="&#xE706;" FontFamily="{StaticResource IconFont}" FontSize="16"
+                               Foreground="{DynamicResource BrandBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                               RenderTransformOrigin="0.5,0.5">
+                        <TextBlock.RenderTransform>
+                            <RotateTransform Angle="0" />
+                        </TextBlock.RenderTransform>
+                    </TextBlock>
                 </Border>
 
                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="12,0,16,0">
-                    <!-- 正在扫描 -->
-                    <TextBlock Text="{DynamicResource adScanning}" FontSize="13" FontWeight="SemiBold"
-                               Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center">
-                        <TextBlock.Style>
-                            <Style TargetType="TextBlock">
+                    <!-- 正在扫描（含实时计数） -->
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
                                 <Setter Property="Visibility" Value="Collapsed" />
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsScanning}" Value="True">
@@ -70,8 +90,12 @@
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
-                        </TextBlock.Style>
-                    </TextBlock>
+                        </StackPanel.Style>
+                        <TextBlock Text="{DynamicResource adScanning}" FontSize="13" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding FoundCount, StringFormat=（已发现 {0} 台）}" FontSize="12"
+                                   Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" Margin="8,0,0,0" />
+                    </StackPanel>
                     <!-- 扫描完成 -->
                     <TextBlock Text="{DynamicResource adScanDone}" FontSize="13" FontWeight="SemiBold"
                                Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center">
@@ -106,16 +130,16 @@
             </Grid>
         </Border>
 
-        <!-- 设备列表 -->
-        <Grid Grid.Row="2">
+            <!-- 结果列表（流式插入）；可见性绑 HasResults（集合实例绑定不会随增删重求值） -->
+            <Grid Grid.Row="2">
             <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
-                          Visibility="{Binding ScannedDevices, Converter={StaticResource HasItemsToVis}}">
+                          Visibility="{Binding HasResults, Converter={StaticResource BoolToVis}}">
                 <ItemsControl ItemsSource="{Binding ScannedDevices}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <Border Background="{DynamicResource CardBgBrush}"
                                     BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
-                                    CornerRadius="12" Padding="14,12" Margin="0,0,0,10">
+                                    CornerRadius="12" Padding="14,12" Margin="0,12,0,0">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
@@ -123,7 +147,7 @@
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
 
-                                    <!-- 类型图标 -->
+                                    <!-- 类型图标（四信号分类） -->
                                     <Border Grid.Column="0" Width="38" Height="38" CornerRadius="10"
                                             Background="{DynamicResource SurfaceAltBrush}">
                                         <TextBlock Text="{Binding Kind, Converter={StaticResource KindToGlyph}}"
@@ -132,13 +156,12 @@
                                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
                                     </Border>
 
-                                    <!-- 名称 + 已配对/地址 -->
+                                    <!-- 名称 + 配对徽标 + 地址 -->
                                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="12,0,12,0">
                                         <StackPanel Orientation="Horizontal">
                                             <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
                                                        Foreground="{DynamicResource TextPrimaryBrush}"
                                                        TextTrimming="CharacterEllipsis" />
-                                            <!-- 已配对徽标 -->
                                             <Border Background="{DynamicResource OnlineLightBrush}" CornerRadius="4"
                                                     Padding="5,1" Margin="8,0,0,0" VerticalAlignment="Center">
                                                 <Border.Style>
@@ -159,14 +182,18 @@
                                                    Foreground="{DynamicResource TextMutedBrush}" Margin="0,2,0,0" />
                                     </StackPanel>
 
-                                    <!-- 连接并添加 -->
+                                    <!-- 行尾按钮三态：配对并添加 / 连接 / 已连接（禁用） -->
                                     <Button Grid.Column="2" Style="{StaticResource PillButton}" VerticalAlignment="Center"
                                             Command="{Binding DataContext.ConnectAndAddCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                             CommandParameter="{Binding}">
+                                        <Button.IsEnabled>
+                                            <Binding Path="LinkState" Converter="{StaticResource LinkStateToEnabled}" />
+                                        </Button.IsEnabled>
                                         <StackPanel Orientation="Horizontal">
                                             <TextBlock Text="&#xE8B9;" FontFamily="{StaticResource IconFont}" FontSize="12"
-                                                       VerticalAlignment="Center" Margin="0,0,6,0" />
-                                            <TextBlock Text="{DynamicResource adConnectAdd}" VerticalAlignment="Center" />
+                                                       VerticalAlignment="Center" Margin="0,0,6,0"
+                                                       Visibility="{Binding IsPaired, Converter={StaticResource InverseBoolToVis}}" />
+                                            <TextBlock Text="{Binding ActionText}" VerticalAlignment="Center" />
                                         </StackPanel>
                                     </Button>
                                 </Grid>
@@ -176,25 +203,68 @@
                 </ItemsControl>
             </ScrollViewer>
 
-            <!-- 空状态（仅当非扫描且无设备时显示） -->
+            <!-- 空态 / 扫描中引导（无结果时显示，互斥） -->
             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                 <StackPanel.Style>
                     <Style TargetType="StackPanel">
-                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Setter Property="Visibility" Value="Visible" />
                         <Style.Triggers>
-                            <DataTrigger Binding="{Binding ScannedDevices.Count}" Value="0">
-                                <Setter Property="Visibility" Value="Visible" />
-                            </DataTrigger>
-                            <DataTrigger Binding="{Binding IsScanning}" Value="True">
+                            <DataTrigger Binding="{Binding HasResults}" Value="True">
                                 <Setter Property="Visibility" Value="Collapsed" />
                             </DataTrigger>
                         </Style.Triggers>
                     </Style>
                 </StackPanel.Style>
-                <TextBlock Text="&#xE794;" FontFamily="{StaticResource IconFont}" FontSize="44"
-                           Foreground="{DynamicResource TextMutedBrush}" HorizontalAlignment="Center" />
-                <TextBlock Text="{DynamicResource adEmpty}" FontSize="13"
-                           Foreground="{DynamicResource TextMutedBrush}" HorizontalAlignment="Center" Margin="0,14,0,0" />
+
+                <!-- 图标：扫描中脉动蓝牙 / 空态放大镜 -->
+                <TextBlock FontFamily="{StaticResource IconFont}" FontSize="44" HorizontalAlignment="Center"
+                           Foreground="{DynamicResource BrandBrush}" Text="&#xE706;">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+                            <Setter Property="Text" Value="&#xE794;" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsScanning}" Value="True">
+                                    <Setter Property="Text" Value="&#xE706;" />
+                                    <Setter Property="Foreground" Value="{DynamicResource BrandBrush}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+
+                <!-- 扫描中引导 -->
+                <StackPanel HorizontalAlignment="Center" Margin="0,14,0,0">
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsScanning}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
+                    <TextBlock Text="{DynamicResource adScanning}" Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Center" />
+                </StackPanel>
+
+                <!-- 零结果排查建议 -->
+                <StackPanel HorizontalAlignment="Center" Margin="0,14,0,0">
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Setter Property="Visibility" Value="Visible" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsScanning}" Value="True">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
+                    <TextBlock Text="{DynamicResource adEmpty}" Foreground="{DynamicResource TextMutedBrush}" HorizontalAlignment="Center" />
+                    <TextBlock Text="{DynamicResource adEmptyHint1}" Foreground="{DynamicResource TextMutedBrush}" FontSize="12" HorizontalAlignment="Center" Margin="0,8,0,0" />
+                    <TextBlock Text="{DynamicResource adEmptyHint2}" Foreground="{DynamicResource TextMutedBrush}" FontSize="12" HorizontalAlignment="Center" Margin="0,4,0,0" />
+                    <TextBlock Text="{DynamicResource adEmptyHint3}" Foreground="{DynamicResource TextMutedBrush}" FontSize="12" HorizontalAlignment="Center" Margin="0,4,0,0" />
+                </StackPanel>
             </StackPanel>
         </Grid>
     </Grid>

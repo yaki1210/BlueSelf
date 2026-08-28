@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BlueSelf UI 优化 · 进度盘点</title>
+<style>
+  :root {
+    --bg: #101014; --panel: #1a1c22; --card: #20232b; --border: #33363f; --border-subtle: #2a2d35;
+    --text: #f4f4f5; --text-2: #c7c9cf; --muted: #8e9096; --brand: #6d5df2; --brand-light: #2a2740;
+    --green: #34d399; --yellow: #f5b50b; --red: #f87171; --gray: #9ca3af;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif; line-height: 1.65; padding: 48px 24px; }
+  .wrap { max-width: 960px; margin: 0 auto; }
+  .kicker { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); letter-spacing: .12em; text-transform: uppercase; margin-bottom: 12px; }
+  .kicker::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+  h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+  .sub { color: var(--muted); font-size: 14px; margin-bottom: 28px; }
+  .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 20px 0 32px; }
+  .metric { background: var(--card); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 18px; }
+  .metric .v { font-size: 26px; font-weight: 700; font-family: Consolas, monospace; }
+  .metric .k { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .metric.g .v { color: var(--green); } .metric.y .v { color: var(--yellow); } .metric.r .v { color: var(--red); }
+  h2 { font-size: 18px; margin: 36px 0 14px; padding-top: 22px; border-top: 1px solid var(--border-subtle); }
+  h2 .no { color: var(--brand); margin-right: 8px; font-family: Consolas, monospace; font-size: 14px; }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 13px; background: var(--panel); border-radius: 12px; overflow: hidden; border: 1px solid var(--border-subtle); }
+  th { text-align: left; padding: 9px 13px; color: var(--muted); font-size: 12px; font-weight: 600; border-bottom: 1px solid var(--border); background: var(--card); }
+  td { padding: 9px 13px; border-bottom: 1px solid var(--border-subtle); vertical-align: top; color: var(--text-2); }
+  tr:last-child td { border-bottom: none; }
+  td code { font-family: Consolas, monospace; font-size: 12px; background: var(--brand-light); color: #c7c9ff; padding: 1px 6px; border-radius: 5px; }
+  .st { display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 9px; border-radius: 999px; white-space: nowrap; }
+  .st.done { background: rgba(52,211,153,.15); color: var(--green); }
+  .st.part { background: rgba(245,181,11,.15); color: var(--yellow); }
+  .st.todo { background: rgba(156,163,175,.15); color: var(--gray); }
+  .shot { border-radius: 12px; border: 1px solid var(--border); overflow: hidden; margin: 12px 0; }
+  .shot img { width: 100%; display: block; }
+  .shot .cap { font-size: 12px; color: var(--muted); padding: 9px 14px; background: var(--card); border-top: 1px solid var(--border-subtle); }
+  .note { background: var(--card); border-left: 3px solid var(--yellow); border-radius: 8px; padding: 12px 16px; font-size: 13px; color: var(--text-2); margin: 14px 0; }
+  footer { margin-top: 44px; padding-top: 18px; border-top: 1px solid var(--border-subtle); font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="kicker">进度盘点 · 2026-08-28 11:30</div>
+<h1>BlueSelf UI 优化 · 已完成与未完成</h1>
+<div class="sub">合并计划 6 阶段执行状态 · Windows 端已全部落地并实测 · Android 端待做</div>
+
+<div class="metrics">
+  <div class="metric g"><div class="v">4/5</div><div class="k">阶段完成（1-4 Windows 端）</div></div>
+  <div class="metric y"><div class="v">1</div><div class="k">阶段未做（5 Android 端）</div></div>
+  <div class="metric r"><div class="v">6</div><div class="k">项需真机联调验证</div></div>
+</div>
+
+<h2><span class="no">01</span>已完成（Windows 端，编译 0 警告 0 错误，均实测截图验证）</h2>
+<table>
+  <tr><th>项</th><th>状态</th><th>验证结果</th></tr>
+  <tr><td>方案 A：删目标区 / 附件托盘去容器 / placeholder 引导 / 文案清理</td><td><span class="st done">已完成</span></td><td>截图确认：编辑区无目标行、无附件空腔，未选目标显示"请在左侧选择要发送的目标设备"</td></tr>
+  <tr><td>窗口圆角（DWM P/Invoke + 最大化切直角 + 去系统描边）</td><td><span class="st done">已完成</span></td><td>截图确认左上角圆弧生效（Win11）；Win10 静默降级直角</td></tr>
+  <tr><td>DeviceKind 四信号分类器（新文件）+ KindOfName/IsLikelyPeerDevice 替换</td><td><span class="st done">已完成</span></td><td>编译通过；词表已与 Android 端对齐（PC/平板/手机 + 中文词）</td></tr>
+  <tr><td>DeviceWatcherScanner 流式扫描（新文件）+ VM debounce + 按钮两态</td><td><span class="st done">已完成</span></td><td>实测扫描发现 9 台设备实时上屏，计数实时刷新，15s 自动停</td></tr>
+  <tr><td>AddDeviceView 重写（横幅图标 bug 修复 / 扫描动画 / 已配对徽标 / 三态按钮 / 空态引导）</td><td><span class="st done">已完成</span></td><td>截图确认全部生效；原"扫描图标异常"根因（Text 误绑 BoolToVis）已修</td></tr>
+  <tr><td>关键修复：AQS ProtocolId GUID 错误导致枚举恒空</td><td><span class="st done">已完成</span></td><td>独立探针程序实测：旧 GUID 不存在（added=0），正确 GUID added=9</td></tr>
+  <tr><td>未选目标点发送的三合一校验（逻辑保留未动）</td><td><span class="st done">已完成</span></td><td>代码审查确认，运行时由你真机验证</td></tr>
+</table>
+
+<h2><span class="no">02</span>未完成</h2>
+<table>
+  <tr><th>项</th><th>状态</th><th>说明</th></tr>
+  <tr><td>阶段 5：Android 端 BluetoothManager.kt（词表对齐 + 收到 TXT 后按 sName 校准 deviceType 图标自愈）</td><td><span class="st todo">未开始</span></td><td>约 15 行改动，需 gradlew 构建验证，可独立发版；Windows 端新分类器词表已按 Android 现状对齐，Android 侧只差 sName 校准</td></tr>
+  <tr><td>阶段 6：双端真机联调（6 项验证矩阵）</td><td><span class="st todo">需你配合</span></td><td>手机删配对重扫看图标 / PC 扫描配对手机 / 反向配对 / sName 自愈 / 互发回归</td></tr>
+  <tr><td>DeviceScanner.cs 物理删除</td><td><span class="st part">存根化</span></td><td>运行环境删除文件需你确认（安全护栏拦了两次），已清空为注释存根，不参与编译；可随手删</td></tr>
+  <tr><td>扫描结果中 4 行"未知设备"（名字为空的已配对设备）</td><td><span class="st part">已知现象</span></td><td>系统缓存中名字未取到的设备；点击连接后会以真实名建链。如需优化可在连接成功后回写名称，待你反馈是否需要</td></tr>
+</table>
+
+<h2><span class="no">03</span>当前运行态截图</h2>
+<div class="shot">
+  <img src="../.openclaw/tmp/blueself-scan-list.png" alt="扫描中列表">
+  <div class="cap">添加新设备页实测：流式发现 9 台设备、已配对徽标、地址后缀、连接按钮、停止扫描两态按钮、实时计数。</div>
+</div>
+
+<div class="note">下一步默认动作：完成 Android 端 15 行改动并构建验证（阶段 5），然后把 6 项真机验证清单交给你执行。回复"继续"即开工；若扫描页"未知设备"行需要优化（连接成功后回写真实名称）请一并告知。</div>
+
+<footer>BlueSelf Windows UI 优化 · 阶段 1-4 完成 · 阶段 5-6 待做 · 2026-08-28</footer>
+</div>
+</body>
+</html>

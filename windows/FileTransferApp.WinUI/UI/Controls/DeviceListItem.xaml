@@ -26,11 +26,9 @@
             <StackPanel Grid.Column="1" VerticalAlignment="Center">
                 <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
                            Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" />
-                <TextBlock Text="{Binding StatusText}" FontSize="11" Foreground="{DynamicResource TextMutedBrush}"
-                           Margin="0,1,0,0" />
             </StackPanel>
 
-            <!-- 状态圆点 -->
+            <!-- 状态圆点：绿=已连接/当前目标 黄=连接中 灰=未连接 红=失败 -->
             <Ellipse Grid.Column="2" Width="8" Height="8" VerticalAlignment="Center" Margin="6,0,2,0"
                      Fill="{Binding Status, Converter={StaticResource StatusToBrush}}" />
         </Grid>

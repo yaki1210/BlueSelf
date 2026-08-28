@@ -40,29 +40,19 @@ internal static class Discovery
         return result;
     }
 
-    /// <summary>True if the device is likely a BlueSelf peer (phone/computer/tablet), not an accessory.
-    /// Uses Bluetooth major class as the primary signal, with name-based fallback for devices
-    /// that don't report a usable class.</summary>
+    /// <summary>True if the device is a plausible BlueSelf peer. Only filters clear accessory classes
+    /// (audio/peripheral/imaging); unknown names/classes are kept so real peers are never dropped —
+    /// final peer confirmation happens at connection time (RFCOMM service UUID match).</summary>
     internal static bool IsLikelyPeerDevice(string name, BluetoothMajorClass majorClass)
     {
-        // 明确的对端类型（手机/电脑）直接保留。
+        // 明确的配件类型直接过滤；其余全部保留（含未知名字 + 未知 CoD）。
         switch (majorClass)
         {
-            case BluetoothMajorClass.Phone:
-            case BluetoothMajorClass.Computer:
-                return true;
-            // 明确的配件类型（音频/键盘鼠标等）直接过滤。
             case BluetoothMajorClass.AudioVideo:
             case BluetoothMajorClass.Peripheral:
             case BluetoothMajorClass.Imaging:
                 return false;
         }
-
-        // 其它/未知类型：退化为按名称判断，避免依赖不可靠的 MajorClass。
-        var lower = name.ToLowerInvariant();
-        return lower.Contains("phone") || lower.Contains("手机")
-            || lower.Contains("pc") || lower.Contains("windows") || lower.Contains("电脑") || lower.Contains("mac")
-            || lower.Contains("tab") || lower.Contains("pad") || lower.Contains("平板") || lower.Contains("ipad")
-            || lower.Contains("pixel") || lower.Contains("galaxy") || lower.Contains("xiaomi");
+        return true;
     }
 }

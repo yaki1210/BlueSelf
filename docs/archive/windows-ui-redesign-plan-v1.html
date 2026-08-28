@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BlueSelf Windows 端 UI 优化方案</title>
+<style>
+  :root {
+    --bg: #101014; --panel: #1a1c22; --card: #20232b; --border: #33363f; --border-subtle: #2a2d35;
+    --text: #f4f4f5; --text-2: #c7c9cf; --muted: #8e9096; --brand: #6d5df2; --brand-light: #2a2740;
+    --green: #34d399; --yellow: #f5b50b; --red: #f87171; --gray: #9ca3af;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif; line-height: 1.65; padding: 48px 24px; }
+  .wrap { max-width: 960px; margin: 0 auto; }
+  header { margin-bottom: 40px; }
+  .kicker { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); letter-spacing: .12em; text-transform: uppercase; margin-bottom: 12px; }
+  .kicker::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--yellow); }
+  h1 { font-size: 30px; font-weight: 700; letter-spacing: -.01em; margin-bottom: 10px; }
+  .sub { color: var(--muted); font-size: 14px; }
+  h2 { font-size: 19px; margin: 44px 0 16px; padding-top: 24px; border-top: 1px solid var(--border-subtle); }
+  h2 .no { color: var(--brand); margin-right: 8px; font-family: Consolas, monospace; font-size: 15px; }
+  .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 20px 0; }
+  .metric { background: var(--card); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px 18px; }
+  .metric .v { font-size: 24px; font-weight: 700; font-family: Consolas, monospace; }
+  .metric .k { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .metric.m1 .v { color: var(--green); } .metric.m2 .v { color: var(--yellow); } .metric.m3 .v { color: var(--red); }
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13.5px; background: var(--panel); border-radius: 12px; overflow: hidden; border: 1px solid var(--border-subtle); }
+  th { text-align: left; padding: 10px 14px; color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: .04em; border-bottom: 1px solid var(--border); background: var(--card); }
+  td { padding: 11px 14px; border-bottom: 1px solid var(--border-subtle); vertical-align: top; color: var(--text-2); }
+  tr:last-child td { border-bottom: none; }
+  td code, li code { font-family: Consolas, "Cascadia Code", monospace; font-size: 12px; background: var(--brand-light); color: #c7c9ff; padding: 1px 6px; border-radius: 5px; }
+  .sev { display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 9px; border-radius: 999px; }
+  .sev.high { background: rgba(248,113,113,.14); color: var(--red); }
+  .sev.mid { background: rgba(245,181,11,.14); color: var(--yellow); }
+  .sev.low { background: rgba(156,163,175,.14); color: var(--gray); }
+  .card { background: var(--panel); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 20px 22px; margin: 14px 0; }
+  .card h3 { font-size: 15px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px; }
+  .tag { font-size: 11px; font-weight: 700; padding: 2px 10px; border-radius: 999px; background: var(--brand-light); color: #c7c9ff; }
+  .card p, .card li { font-size: 13.5px; color: var(--text-2); }
+  .card ul { padding-left: 20px; margin: 8px 0; }
+  .card li { margin: 5px 0; }
+  .file { font-family: Consolas, monospace; font-size: 12px; color: var(--muted); background: var(--card); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 2px 8px; display: inline-block; margin-top: 6px; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0; }
+  .compare .col { border-radius: 12px; padding: 16px 18px; border: 1px solid var(--border-subtle); }
+  .compare .bad { background: rgba(248,113,113,.05); border-color: rgba(248,113,113,.25); }
+  .compare .good { background: rgba(52,211,153,.05); border-color: rgba(52,211,153,.25); }
+  .compare .h { font-size: 12px; font-weight: 700; letter-spacing: .08em; margin-bottom: 8px; }
+  .compare .bad .h { color: var(--red); } .compare .good .h { color: var(--green); }
+  .compare p { font-size: 13px; color: var(--text-2); }
+  .note { background: var(--card); border-left: 3px solid var(--yellow); border-radius: 8px; padding: 12px 16px; font-size: 13px; color: var(--text-2); margin: 16px 0; }
+  ol.steps { counter-reset: s; list-style: none; padding: 0; margin: 14px 0; }
+  ol.steps li { counter-increment: s; position: relative; padding: 0 0 18px 44px; }
+  ol.steps li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 28px; height: 28px; border-radius: 50%; background: var(--brand-light); color: #c7c9ff; font-weight: 700; font-size: 13px; display: flex; align-items: center; justify-content: center; font-family: Consolas, monospace; }
+  ol.steps li::after { content: ""; position: absolute; left: 13.5px; top: 32px; bottom: 2px; width: 1px; background: var(--border); }
+  ol.steps li:last-child::after { display: none; }
+  ol.steps .t { font-weight: 600; font-size: 14px; color: var(--text); }
+  ol.steps .d { font-size: 13px; color: var(--muted); }
+  .shot { border-radius: 14px; border: 1px solid var(--border); overflow: hidden; margin: 16px 0; }
+  .shot img { width: 100%; display: block; }
+  .shot .cap { font-size: 12px; color: var(--muted); padding: 10px 16px; background: var(--card); border-top: 1px solid var(--border-subtle); }
+  footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--border-subtle); font-size: 12px; color: var(--muted); }
+  @media (max-width: 720px) { .metrics, .compare { grid-template-columns: 1fr; } body { padding: 28px 16px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">调研稿 · 待确认后实施</div>
+  <h1>BlueSelf Windows 端 UI 优化方案</h1>
+  <div class="sub">窗口圆角 · 发送区降噪 · 英文 To: 间距 &nbsp;|&nbsp; 证据：运行中窗口截图 + XAML 源码走读 &nbsp;|&nbsp; 2026-08-28</div>
+</header>
+
+<div class="metrics">
+  <div class="metric m1"><div class="v">3</div><div class="k">用户反馈问题，根因全部定位</div></div>
+  <div class="metric m2"><div class="v">6</div><div class="k">改动任务，预计 1 轮实施完成</div></div>
+  <div class="metric m3"><div class="v">5</div><div class="k">涉及文件，全部在 WinUI 工程内</div></div>
+</div>
+
+<h2><span class="no">01</span>现状取证</h2>
+<div class="shot">
+  <img src="windows-ui-current.png" alt="BlueSelf 当前界面截图">
+  <div class="cap">运行中的 BlueSelf 深色主题（工作区）。可看到：直角窗口；「发送目标：」右侧的深绿色大色块徽标；编辑区下方空置的附件托盘整宽背景框。</div>
+</div>
+
+<h2><span class="no">02</span>问题定位（截图 + 源码双重证据）</h2>
+<table>
+  <tr><th>#</th><th>问题</th><th>根因</th><th>位置</th><th>严重度</th></tr>
+  <tr><td>1</td><td>窗口无圆角</td><td><code>WindowStyle="None"</code> + <code>WindowChrome CornerRadius="0"</code>，未调用 Win11 DWM 圆角 API</td><td><code>MainWindow.xaml</code></td><td><span class="sev mid">中</span></td></tr>
+  <tr><td>2a</td><td>发送区背景框空腔难看</td><td>附件托盘 Border 无附件时依然整宽渲染，与目标提示条、大小文字形成三层叠框</td><td><code>WorkspaceView.xaml</code> 托盘区</td><td><span class="sev high">高</span></td></tr>
+  <tr><td>2b</td><td>状态标识是大深绿矩形、看不清</td><td>目标行徽标用 <code>OnlineLightBrush</code> 大底 + 硬编码深绿文字 <code>#065F46</code>，色块大、对比弱、不随主题联动</td><td><code>WorkspaceView.xaml</code> 目标行</td><td><span class="sev high">高</span></td></tr>
+  <tr><td>3</td><td>英文 To: 与设备名贴死</td><td><code>wsSendTo</code> = "To: " 尾随空格被 WPF 相邻 TextBlock 渲染吞掉；中文全角冒号无此问题</td><td><code>En.xaml</code> + <code>WorkspaceView.xaml</code></td><td><span class="sev low">低</span></td></tr>
+</table>
+
+<h2><span class="no">03</span>修改方案</h2>
+
+<div class="card">
+  <h3>方案 1 · 窗口圆角 <span class="tag">Win11 DWM API</span></h3>
+  <p>在 MainWindow 构造后调用 <code>DwmSetWindowAttribute(DWMWA_WINDOW_CORNER_PREFERENCE=33, DWMWCP_ROUND=2)</code> 开启系统级圆角；监听 StateChanged，最大化时切 <code>DONOTROUND</code> 避免圆角残缺，还原时恢复。Win10 上 API 调用失败则静默保持直角。可选：用 <code>DWMWA_BORDER_COLOR=34</code> 去掉 Win11 默认描边，更贴合现有深色自绘边框。</p>
+  <div class="file">MainWindow.xaml.cs（+30 行 P/Invoke）</div>
+</div>
+
+<div class="card">
+  <h3>方案 2 · 发送区视觉降噪 <span class="tag">空态折叠 + 徽标圆点化</span></h3>
+  <ul>
+    <li><b>附件托盘空态折叠</b>：绑定 <code>HasAttachments</code>（需在 MainViewModel 补属性），无附件时托盘整体 Collapsed，空腔消失；有附件时保留圆角托盘但底色改用更轻的 <code>SurfaceBrush</code>、边框用 <code>BorderSubtleBrush</code>，降低叠框感。</li>
+    <li><b>状态徽标圆点化</b>：删除大色块 Border，设备名后改为 8px 状态圆点 + 小字状态，复用左侧设备列表已有的 <code>StatusToBrushConverter</code>（在线=绿 / 连接中=黄 / 失败=红 / 离线=灰），删除硬编码 <code>#065F46</code>，颜色全部走主题资源，与列表视觉语言统一。</li>
+  </ul>
+  <div class="file">WorkspaceView.xaml · MainViewModel.cs · Light.xaml · Dark.xaml</div>
+  <div class="compare">
+    <div class="col bad">
+      <div class="h">现在</div>
+      <p>大深绿色块徽标（含状态文字），色块占位大、深色主题下文字对比度不足，且硬编码色值不随主题切换。</p>
+    </div>
+    <div class="col good">
+      <div class="h">改后</div>
+      <p><span class="dot" style="background:var(--green)"></span>8px 圆点 + 弱化状态小字，与左侧设备列表同一套状态色语言，深浅主题自动适配。</p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h3>方案 3 · 英文 To: 间距 <span class="tag">文案层修复</span></h3>
+  <p><code>En.xaml</code> 的 <code>wsSendTo</code> 从 "To: " 改为 "To"，间距改由 XAML 显式 <code>Margin="0,0,4,0"</code> 提供，不再依赖字符串尾随空格（WPF 会吞掉相邻 TextBlock 间空格）。中文「发送目标：」全角冒号自带间距，保持不变。</p>
+  <div class="file">En.xaml · WorkspaceView.xaml（共 2 行）</div>
+</div>
+
+<h2><span class="no">04</span>实施顺序（确认后执行）</h2>
+<ol class="steps">
+  <li><div class="t">窗口圆角 + 最大化切换</div><div class="d">MainWindow.xaml.cs · 约 30 行 P/Invoke，Win10 静默降级直角</div></li>
+  <li><div class="t">附件托盘空态折叠</div><div class="d">WorkspaceView.xaml + MainViewModel.cs · 约 10 行</div></li>
+  <li><div class="t">状态徽标圆点化</div><div class="d">WorkspaceView.xaml · 约 15 行，复用 StatusToBrushConverter</div></li>
+  <li><div class="t">托盘底色/边框降对比</div><div class="d">WorkspaceView.xaml · 2 个属性</div></li>
+  <li><div class="t">En.xaml To: 间距修复</div><div class="d">En.xaml + WorkspaceView.xaml · 2 行</div></li>
+  <li><div class="t">主题资源巡检 + 编译验证</div><div class="d">dotnet build → 启动 → 截图对比 → 深/浅主题 × 中/英语言各验一遍</div></li>
+</ol>
+
+<div class="note">
+  <b>待确认的 3 个取舍</b>：① 圆点化后是否保留「在线/离线」文字（建议保留，弱化为次要色）；② 附件托盘空态是完全隐藏还是留一条极简提示（建议完全隐藏）；③ Win10 无 DWM 圆角 API，接受「Win11 圆角 / Win10 直角」降级吗。
+</div>
+
+<footer>BlueSelf Windows UI 优化 · 调研阶段产出 · 实施待用户确认 · 2026-08-28</footer>
+</div>
+</body>
+</html>

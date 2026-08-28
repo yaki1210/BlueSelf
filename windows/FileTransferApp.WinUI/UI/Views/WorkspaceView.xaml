@@ -8,6 +8,7 @@
         <converters:EmptyTextToVisibilityConverter x:Key="EmptyToVis" />
         <converters:NullToVisibilityConverter x:Key="NullToVis" />
         <converters:ConnectingToCollapsedConverter x:Key="ConnectingToCollapsed" />
+        <converters:HasItemsToVisibilityConverter x:Key="HasItemsToVis" />
     </UserControl.Resources>
 
     <Grid Margin="20,16,20,16">
@@ -16,7 +17,6 @@
             <ColumnDefinition Width="*" />
             <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
-
         <!-- 左侧：设备栏 -->
         <Border Grid.Column="0" Background="{DynamicResource CardBgBrush}"
                 BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
@@ -51,21 +51,13 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <!-- 主体：在线 = 仅设为目标；离线/失败/连接中 → 不动作（建链走显式按钮） -->
-                                <Button Grid.Column="0" Background="Transparent" BorderThickness="0" Padding="0"
-                                        HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center" Cursor="Hand"
+                                <!-- 主体：单连接模型，整行点击：在线→设为目标；离线/失败→连接/重试；连接中→忽略。状态由圆点表达 -->
+                                <Button Grid.Column="0" Style="{StaticResource RowButton}" Padding="0"
+                                        HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center"
                                         Command="{Binding DataContext.RowClickCommand, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"
                                         CommandParameter="{Binding}">
                                     <controls:DeviceListItem />
                                 </Button>
-                                <!-- 动作按钮：显式建链入口（连接中隐藏） -->
-                                <Button Grid.Column="1" Style="{StaticResource PillButtonOutline}" Margin="4,0,0,0"
-                                        Padding="10,3" FontSize="11" Cursor="Hand"
-                                        ToolTip="建立蓝牙连接"
-                                        Command="{Binding DataContext.ConnectDeviceCommand, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"
-                                        CommandParameter="{Binding}"
-                                        Content="{Binding ActionText}"
-                                        Visibility="{Binding Status, Converter={StaticResource ConnectingToCollapsed}, FallbackValue=Visible}" />
                             </Grid>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
@@ -83,77 +75,45 @@
             </Grid>
         </Border>
 
-        <!-- 中间：编辑器核心卡片 -->
+        <!-- 中间：编辑器核心卡片（方案 A：无目标行，目标信息由左侧设备栏表达；拖拽在窗口级处理） -->
         <Border Grid.Column="1" Background="{DynamicResource CardBgBrush}"
                 BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
                 CornerRadius="14" Padding="18" Margin="14,0,0,0">
             <Grid>
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <!-- 顶栏：目标选择指示（仅在未选设备且点了发送时显示提示） -->
-                <Border Grid.Row="0" Background="{DynamicResource SurfaceBrush}"
-                        BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1"
-                        CornerRadius="8" Padding="12,8" Margin="0,0,0,12">
-                    <Grid>
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
-                                    Visibility="{Binding ShowTargetHint, Converter={StaticResource BoolToVis}}">
-                            <TextBlock Text="&#xE7BA;" FontFamily="{StaticResource IconFont}" FontSize="13"
-                                       Foreground="{DynamicResource ConnectingBrush}" Margin="0,0,6,0" VerticalAlignment="Center" />
-                            <TextBlock Text="{DynamicResource wsTargetHint}" FontSize="12"
-                                       Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
-                        </StackPanel>
-
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
-                                    Visibility="{Binding IsTargetRowVisible, Converter={StaticResource BoolToVis}}">
-                            <TextBlock Text="&#xE8EA;" FontFamily="{StaticResource IconFont}" FontSize="13"
-                                       Foreground="{DynamicResource BrandBrush}" Margin="0,0,6,0" VerticalAlignment="Center" />
-                            <TextBlock Text="{DynamicResource wsSendTo}" FontSize="12" Foreground="{DynamicResource TextMutedBrush}"
-                                       VerticalAlignment="Center" />
-                            <TextBlock Text="{Binding SelectedDevice.Name}" FontSize="12" FontWeight="Bold"
-                                       Foreground="{DynamicResource BrandBrush}" VerticalAlignment="Center" />
-                            <Border Background="{DynamicResource OnlineLightBrush}" CornerRadius="4" Padding="6,1" Margin="8,0,0,0">
-                                <TextBlock Text="{Binding SelectedDevice.SubLabel}" FontSize="10" FontWeight="SemiBold"
-                                           Foreground="#065F46" />
-                            </Border>
-                        </StackPanel>
-                    </Grid>
-                </Border>
-
-                <!-- 文本编辑区 + 占位水印 -->
-                <Grid Grid.Row="1">
+                <!-- 文本编辑区 + 占位水印（未选目标时水印转为引导文案） -->
+                <Grid Grid.Row="0">
                     <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"
                              AcceptsReturn="True" FontSize="15" VerticalContentAlignment="Top" BorderThickness="0"
                              Background="Transparent" Padding="4" Foreground="{DynamicResource TextPrimaryBrush}"
                              TextWrapping="Wrap" CaretBrush="{DynamicResource BrandBrush}" />
-                    <TextBlock Text="{DynamicResource wsPlaceholder}" FontSize="15"
+                    <TextBlock Text="{Binding PlaceholderText}" FontSize="15"
                                Foreground="{DynamicResource TextDisabledBrush}"
                                Margin="6,5,0,0" IsHitTestVisible="False"
                                Visibility="{Binding Text, Converter={StaticResource EmptyToVis}}" />
                 </Grid>
 
-                <!-- 附件托盘区（无文字标签） -->
-                <Border Grid.Row="2" Margin="0,12,0,14" Background="{DynamicResource SidebarBgBrush}"
-                        BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1"
-                        CornerRadius="10" Padding="10,8">
-                    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-                        <ItemsControl ItemsSource="{Binding Attachments}">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate><controls:AttachmentChip /></DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </ScrollViewer>
-                </Border>
+                <!-- 附件裸排区（无容器：有附件才出现，chip 自带间距） -->
+                <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
+                              Margin="0,4,0,10"
+                              Visibility="{Binding HasPendingAttachments, Converter={StaticResource BoolToVis}}">
+                    <ItemsControl ItemsSource="{Binding Attachments}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate><controls:AttachmentChip /></DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
 
                 <!-- 待发内容总大小 + 底部操作按钮栏 -->
-                <Grid Grid.Row="3">
+                <Grid Grid.Row="2">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />

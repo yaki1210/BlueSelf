@@ -17,9 +17,21 @@ public sealed class DeviceKindToGlyphConverter : IValueConverter
         {
             "pc" => "\uE968",     // Computer
             "tablet" => "\uE970", // Tablet
-            _ => "\uE8EA"         // CellPhone
+            "phone" => "\uE8EA",  // CellPhone
+            "other" => "\uE8A5",  // Document/generic device
+            _ => "\uE8EA"
         };
     }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>扫描页行尾按钮三态：已连接 → 禁用；其余可点。</summary>
+public sealed class LinkStateToEnabledConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        => !string.Equals(value as string, "connected", StringComparison.Ordinal);
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         => throw new NotSupportedException();
