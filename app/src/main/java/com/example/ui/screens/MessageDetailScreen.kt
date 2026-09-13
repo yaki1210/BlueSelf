@@ -73,7 +73,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.R
 import com.example.bluetooth.TransferProgress
 import com.example.data.model.FileEntity
+import com.example.ui.InboundStatus
 import com.example.ui.formatSize
+import com.example.ui.inboundStatusLabel
+import com.example.ui.isPdfFile
 import com.example.ui.theme.StatusOnline
 import com.example.ui.viewmodel.MainViewModel
 import java.text.SimpleDateFormat
@@ -242,7 +245,12 @@ fun MessageDetailScreen(
                             border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                         ) {
                             Text(
-                                text = if (message.isOutgoing) stringResource(R.string.message_sent) else stringResource(R.string.message_received),
+                                text = when (inboundStatusLabel(message.isOutgoing, message.status, files.map { it.status })) {
+                                    InboundStatus.SENT -> stringResource(R.string.message_sent)
+                                    InboundStatus.RECEIVING -> stringResource(R.string.receiving)
+                                    InboundStatus.FAILED -> stringResource(R.string.failed)
+                                    InboundStatus.RECEIVED -> stringResource(R.string.message_received)
+                                },
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                                 color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
@@ -253,53 +261,39 @@ fun MessageDetailScreen(
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // Message Text Full Body Card
-                Text(
-                    text = stringResource(R.string.message_content),
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
-                    ),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
-                )
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("message_content_card"),
-                    shape = RoundedCornerShape(28.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    ),
-                    border = androidx.compose.foundation.BorderStroke(
-                        width = 1.dp,
-                        color = MaterialTheme.colorScheme.outline
-                    )
-                ) {
-                    SelectionContainer {
+                val hasBody = message.content.isNotBlank()
+                val fileSection: @Composable () -> Unit = {
+                    if (files.isNotEmpty()) {
                         Text(
-                            text = message.content,
-                            style = MaterialTheme.typography.bodyLarge.copy(
-                                fontSize = 17.sp,
-                                lineHeight = 26.sp
+                            text = stringResource(R.string.files_section),
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
                             ),
                             color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(24.dp)
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
                         )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        files.forEach { file ->
+                            FileRow(
+                                file = file,
+                                progress = transferProgress[file.id],
+                                isSaving = file.id in savingFileIds,
+                                onDownload = { viewModel.downloadFile(file) }
+                            )
+                            Spacer(modifier = Modifier.height(10.dp))
+                        }
+                        Spacer(modifier = Modifier.height(24.dp))
                     }
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
+                if (!hasBody) {
+                    fileSection()
+                }
 
-                // Attachments: one row per file, newest order preserved from DB sortOrder
-                if (files.isNotEmpty()) {
+                if (hasBody) {
                     Text(
-                        text = stringResource(R.string.files_section),
+                        text = stringResource(R.string.message_content),
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp
@@ -307,19 +301,51 @@ fun MessageDetailScreen(
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
                     )
+
                     Spacer(modifier = Modifier.height(6.dp))
-                    files.forEach { file ->
-                        FileRow(
-                            file = file,
-                            progress = transferProgress[file.id],
-                            isSaving = file.id in savingFileIds,
-                            onDownload = { viewModel.downloadFile(file) }
+
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("message_content_card"),
+                        shape = RoundedCornerShape(28.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surface
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.outline
                         )
-                        Spacer(modifier = Modifier.height(10.dp))
+                    ) {
+                        SelectionContainer {
+                            Text(
+                                text = message.content,
+                                style = MaterialTheme.typography.bodyLarge.copy(
+                                    fontSize = 17.sp,
+                                    lineHeight = 26.sp
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(24.dp)
+                            )
+                        }
                     }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+                } else if (files.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.no_text_content),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
+                    )
+                    Spacer(modifier = Modifier.height(24.dp))
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
+                if (hasBody) {
+                    fileSection()
+                }
 
                 // Action Buttons: Copy Text & Fill in Input
                 Row(
@@ -404,7 +430,7 @@ private fun FileRow(
 ) {
     val icon = when {
         file.mimeType.startsWith("image/") -> Icons.Default.Image
-        file.mimeType == "application/pdf" -> Icons.Default.PictureAsPdf
+        isPdfFile(file.mimeType, file.fileName) -> Icons.Default.PictureAsPdf
         else -> Icons.Default.Description
     }
 

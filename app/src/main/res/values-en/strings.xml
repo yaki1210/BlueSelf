@@ -57,6 +57,7 @@
     <string name="delete_message">Delete message</string>
     <string name="message_sent">Sent</string>
     <string name="message_received">Received</string>
+    <string name="no_text_content">No text content</string>
     <string name="message_content">Message content</string>
     <string name="copy_text">Copy text</string>
     <string name="fill_input">Fill into home</string>

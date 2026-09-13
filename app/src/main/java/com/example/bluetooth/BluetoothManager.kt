@@ -77,11 +77,24 @@ class BluetoothManager(private val context: Context) {
     private val _incomingMessages = MutableSharedFlow<MessageProtocol.Packet>(extraBufferCapacity = 64)
     val incomingMessages: SharedFlow<MessageProtocol.Packet> = _incomingMessages.asSharedFlow()
 
+    private val writeLock = Any()
+
     /** File transfer pipeline: progress / results / remote acks. */
     val fileTransfer: FileTransferManager = FileTransferManager(
         stagingDir = File(context.getExternalFilesDir(null), "received"),
         writeFrames = { frames ->
-            writeFramesToSocket(frames)
+            writeFramesToSocket(frames, flush = true)
+        },
+        writeControl = { frames ->
+            // ACK/ERR must not flush on the Bluetooth read loop — that deadlocks RFCOMM
+            // while the peer is still pushing a file window.
+            scope.launch {
+                try {
+                    writeFramesToSocket(frames, flush = false)
+                } catch (e: Exception) {
+                    Log.w(tag, "Control write error: ${e.message}")
+                }
+            }
         }
     )
 
@@ -405,18 +418,17 @@ class BluetoothManager(private val context: Context) {
     }
 
     /**
-     * Writes one or more frames to the active socket in a single write()+flush().
-     * Used by text, arbitrary frames, and the file-transfer pipeline (window batching).
+     * Writes one or more frames to the active socket.
+     * Data path (text / file windows) flushes; control path (ACK/ERR) does not —
+     * flushing on the read loop while the peer is sending a file window wedges RFCOMM.
      */
-    private fun writeFramesToSocket(frames: List<MessageProtocol.Frame>) {
+    private fun writeFramesToSocket(frames: List<MessageProtocol.Frame>, flush: Boolean = true) {
         if (frames.isEmpty()) return
-        val stream = outputStream
-        if (stream == null || _connectionState.value != BluetoothConnectionState.ONLINE) return
-        try {
+        synchronized(writeLock) {
+            val stream = outputStream
+            if (stream == null || _connectionState.value != BluetoothConnectionState.ONLINE) return
             stream.write(FrameCodec.encodeBatch(frames))
-            stream.flush()
-        } catch (e: Exception) {
-            Log.e(tag, "Write frames error: ${e.message}")
+            if (flush) stream.flush()
         }
     }
 
@@ -475,6 +487,7 @@ class BluetoothManager(private val context: Context) {
             } catch (e: Exception) {
                 Log.w(tag, "Read stream ended or error: ${e.message}")
             } finally {
+                fileTransfer.abort()
                 _connectionState.value = BluetoothConnectionState.OFFLINE
             }
         }

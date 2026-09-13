@@ -105,4 +105,19 @@ class FrameCodecTest {
         assertEquals(1024L, start.size)
         assertEquals("deadbeef", start.md5)
     }
+
+    @Test
+    fun `file ack encodes bytes not chunk counts`() {
+        val payload = FileMetaJson.encodeAck(
+            id = "f1",
+            ackedChunks = 6_000_000L,
+            ok = true,
+            md5Match = true
+        )
+        val ack = FileMetaJson.decodeAck(payload)
+        assertEquals("f1", ack.id)
+        assertEquals(6_000_000L, ack.ackedChunks)
+        assertEquals(true, ack.ok)
+        assertEquals(true, ack.md5Match)
+    }
 }

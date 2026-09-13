@@ -1,5 +1,7 @@
 package com.example.bluetooth
 
+import android.util.Log
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -63,19 +65,27 @@ data class TransferResult(
  */
 class FileTransferManager(
     private val stagingDir: File,
-    private val writeFrames: (List<MessageProtocol.Frame>) -> Unit
+    private val writeFrames: (List<MessageProtocol.Frame>) -> Unit,
+    /** Control frames (ACK/ERR). Must not run on the Bluetooth read loop with flush. */
+    private val writeControl: ((List<MessageProtocol.Frame>) -> Unit)? = null
 ) {
     private val _progress = MutableStateFlow<Map<String, TransferProgress>>(emptyMap())
     val progress: StateFlow<Map<String, TransferProgress>> = _progress.asStateFlow()
 
-    private val _results = MutableSharedFlow<TransferResult>(extraBufferCapacity = 16)
+    private val _results = MutableSharedFlow<TransferResult>(
+        extraBufferCapacity = 64,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
     val results: SharedFlow<TransferResult> = _results.asSharedFlow()
 
     private val _ackEvents = MutableSharedFlow<FileAck>(extraBufferCapacity = 16)
     val ackEvents: SharedFlow<FileAck> = _ackEvents.asSharedFlow()
 
     /** Emitted when an inbound FILE_START is received (receiver inserts the file row). */
-    private val _fileStarts = MutableSharedFlow<FileStart>(extraBufferCapacity = 16)
+    private val _fileStarts = MutableSharedFlow<FileStart>(
+        extraBufferCapacity = 64,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
     val fileStarts: SharedFlow<FileStart> = _fileStarts.asSharedFlow()
 
     private var seqCounter = 0L
@@ -86,6 +96,11 @@ class FileTransferManager(
 
     private fun sendSingle(frame: MessageProtocol.Frame) {
         writeFrames(listOf(frame))
+    }
+
+    private fun sendControl(frame: MessageProtocol.Frame) {
+        val frames = listOf(frame)
+        (writeControl ?: writeFrames)(frames)
     }
 
     // ---------------- SEND ----------------
@@ -171,7 +186,7 @@ class FileTransferManager(
 
     private fun onFileStart(frame: MessageProtocol.Frame) {
         // Replace any in-progress receive (one active file at a time).
-        closeActiveReceive()
+        closeActiveReceive("replaced")
         val meta = FileMetaJson.decodeStart(frame.payload)
         val staging = File(stagingDir, meta.id)
         staging.parentFile?.mkdirs()
@@ -236,9 +251,18 @@ class FileTransferManager(
         if (session.meta.id != end.id) return
         activeReceive = null
 
-        // Stop the writer thread, flush everything still queued.
+        // Stop the writer thread, then drain anything still queued before MD5.
         session.closed = true
         session.writerThread?.join(WRITER_JOIN_TIMEOUT_MS)
+        while (true) {
+            val leftover = session.queue.poll() ?: break
+            try {
+                session.out.write(leftover)
+            } catch (e: Exception) {
+                session.writeError = e.message
+                break
+            }
+        }
         session.out.flush()
         session.out.close()
 
@@ -271,12 +295,15 @@ class FileTransferManager(
         val msg = runCatching {
             org.json.JSONObject(frame.payload.toString(Charsets.UTF_8)).optString("msg", "unknown error")
         }.getOrDefault("unknown error")
-        closeActiveReceive()
-        _results.emitSafely(TransferResult("", false, false, 0, 0, msg))
+        if (activeReceive != null) {
+            closeActiveReceive(msg)
+        } else {
+            _results.emitSafely(TransferResult("", false, false, 0, 0, msg))
+        }
     }
 
     private fun sendAck(fileId: String, ackedChunks: Long, ok: Boolean, md5Match: Boolean) {
-        sendSingle(
+        sendControl(
             MessageProtocol.Frame(
                 type = MessageProtocol.FT_FILE_ACK,
                 seq = nextSeq(),
@@ -286,7 +313,7 @@ class FileTransferManager(
     }
 
     private fun sendErr(fileId: String, code: Int, msg: String) {
-        sendSingle(
+        sendControl(
             MessageProtocol.Frame(
                 type = MessageProtocol.FT_ERR,
                 seq = nextSeq(),
@@ -296,7 +323,7 @@ class FileTransferManager(
     }
 
     /** Drops the current receive session, stops its writer, and removes partial staging. */
-    private fun closeActiveReceive() {
+    private fun closeActiveReceive(failure: String? = null) {
         val session = activeReceive ?: return
         activeReceive = null
         session.closed = true
@@ -304,11 +331,23 @@ class FileTransferManager(
         runCatching { session.out.close() }
         runCatching { session.file.delete() }
         _progress.value = _progress.value - session.meta.id
+        if (failure != null) {
+            _results.emitSafely(
+                TransferResult(
+                    fileId = session.meta.id,
+                    success = false,
+                    md5Match = false,
+                    totalBytes = session.receivedBytes,
+                    durationMs = System.currentTimeMillis() - session.receivedStartedAt,
+                    error = failure
+                )
+            )
+        }
     }
 
     /** Aborts any in-progress receive and clears progress (called on disconnect). */
     fun abort() {
-        closeActiveReceive()
+        closeActiveReceive("disconnected")
         _progress.value = emptyMap()
     }
 
@@ -370,13 +409,15 @@ class FileTransferManager(
         const val QUEUE_CAPACITY = 32
         const val DISK_BUFFER_SIZE = 256 * 1024
         const val WRITER_POLL_TIMEOUT_MS = 200L
-        const val WRITER_JOIN_TIMEOUT_MS = 3000L
+        const val WRITER_JOIN_TIMEOUT_MS = 30_000L
     }
 }
 
 private fun <T> MutableSharedFlow<T>.emitSafely(value: T) {
     try {
-        this.tryEmit(value)
+        if (!tryEmit(value)) {
+            Log.w("FileTransferManager", "dropped event")
+        }
     } catch (_: Exception) {
         // buffer full or closed; ignore
     }

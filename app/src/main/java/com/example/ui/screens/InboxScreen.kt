@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.R
 import com.example.data.model.MessageEntity
+import com.example.ui.InboxPreview
 import com.example.ui.theme.StatusError
 import com.example.ui.viewmodel.MainViewModel
 import java.text.SimpleDateFormat
@@ -311,8 +312,13 @@ fun InboxMessageCard(
             Spacer(modifier = Modifier.height(10.dp))
 
             // Message Content Preview
+            val preview = InboxPreview.of(message.content, fileCount)
             Text(
-                text = message.content,
+                text = when (preview) {
+                    is InboxPreview.Kind.Body -> preview.text
+                    is InboxPreview.Kind.Attachments -> stringResource(R.string.attachment_count, preview.count)
+                    InboxPreview.Kind.Empty -> stringResource(R.string.no_text_content)
+                },
                 style = MaterialTheme.typography.bodyMedium.copy(
                     fontWeight = if (isUnread) FontWeight.Medium else FontWeight.Normal,
                     fontSize = 15.sp,

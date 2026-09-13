@@ -57,6 +57,7 @@
     <string name="delete_message">删除消息</string>
     <string name="message_sent">已发送</string>
     <string name="message_received">已接收</string>
+    <string name="no_text_content">无文本内容</string>
     <string name="message_content">消息内容</string>
     <string name="copy_text">复制文本</string>
     <string name="fill_input">填入主页</string>

@@ -83,6 +83,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.R
 import com.example.bluetooth.BluetoothConnectionState
 import com.example.ui.formatSize
+import com.example.ui.isPdfFile
 import com.example.ui.components.DeviceSelectionSheet
 import com.example.ui.theme.StatusConnecting
 import com.example.ui.theme.StatusError
@@ -510,7 +511,7 @@ private fun AttachmentPreviewChip(
 ) {
     val icon = when {
         attachment.mime.startsWith("image/") -> Icons.Default.Image
-        attachment.mime == "application/pdf" -> Icons.Default.PictureAsPdf
+        isPdfFile(attachment.mime, attachment.name) -> Icons.Default.PictureAsPdf
         else -> Icons.Default.Description
     }
     val ext = fileExtension(attachment.name).uppercase()

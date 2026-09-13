@@ -1028,22 +1028,37 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
         IsTransferring = true;
-        var sentContent = Text;
+        var sentContent = Text ?? string.Empty;
         var messageId = Guid.NewGuid().ToString("N");
+        var attachments = Attachments.ToList();
         ConnectionLog.Write("Send requested",
-            $"target={SelectedDevice?.Name}, state={_transfer.State}, files={Attachments.Count}");
+            $"target={SelectedDevice?.Name}, state={_transfer.State}, files={attachments.Count}");
         try
         {
-            // 与 Android 对齐：总是先发一条 TXT（即使空文本）在对端创建父消息，
-            // 文件用同一 messageId 作为 FILE_START.msgId 挂到该消息下。
-            await _transfer.SendTextAsync(sentContent, messageId);
-            ConnectionLog.Write("TXT sent", $"{sentContent.Length} chars");
-            foreach (var att in Attachments.ToList())
+            // Hash/validate every attachment *before* the parent TXT leaves the wire.
+            // A missing, zero-length, or unreadable file must not create an empty
+            // "delivered" message on Android.
+            var prepared = new List<(AttachmentItem Att, long Size, string Md5)>(attachments.Count);
+            foreach (var att in attachments)
             {
                 FileName = att.Name;
-                if (att.Size > 20L * 1024 * 1024)
+                var (size, md5) = await TransferService.HashFileAsync(att.PathText);
+                prepared.Add((att, size, md5));
+                if (size > 20L * 1024 * 1024)
                     Log("提示：此文件过大，蓝牙传输需较长时间");
-                await _transfer.SendFileAsync(att.PathText, Guid.NewGuid().ToString("N"), messageId);
+                ConnectionLog.Write("File hashed", $"{att.Name} {size} bytes");
+            }
+
+            // 与 Android 对齐：总是先发一条 TXT（即使空文本）在对端创建父消息，
+            // 文件用同一 messageId 作为 FILE_START.msgId 挂到该消息下。
+            // 有附件时 type=FILE，对端把父消息标为接收中而不是已接收空正文。
+            var packetType = prepared.Count > 0 ? "FILE" : "TEXT";
+            await _transfer.SendTextAsync(sentContent, messageId, packetType);
+            ConnectionLog.Write("TXT sent", $"{sentContent.Length} chars type={packetType}");
+            foreach (var (att, _, md5) in prepared)
+            {
+                FileName = att.Name;
+                await _transfer.SendFileAsync(att.PathText, Guid.NewGuid().ToString("N"), messageId, md5);
                 ConnectionLog.Write("File sent", att.Name);
             }
             Text = string.Empty;

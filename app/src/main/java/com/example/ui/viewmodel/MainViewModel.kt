@@ -167,22 +167,41 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun observeIncomingMessages() {
         viewModelScope.launch {
             bluetoothManager.incomingMessages.collect { packet ->
-                val entity = MessageProtocol.packetToEntity(packet, isOutgoing = false)
-                withContext(Dispatchers.IO) {
-                    receiveDbLock.withLock { messageRepository.saveMessage(entity) }
+                val incoming = MessageProtocol.packetToEntity(packet, isOutgoing = false)
+                val entity = withContext(Dispatchers.IO) {
+                    receiveDbLock.withLock {
+                        val existing = messageRepository.getMessageByIdOnce(incoming.id)
+                        val isFile = packet.type == MessageProtocol.TYPE_FILE ||
+                            existing?.messageType == MessageProtocol.TYPE_FILE
+                        val merged = incoming.copy(
+                            messageType = if (isFile) MessageProtocol.TYPE_FILE else incoming.messageType,
+                            status = when {
+                                existing?.status == "FAILED" -> "FAILED"
+                                isFile || existing?.status == "RECEIVING" -> "RECEIVING"
+                                else -> incoming.status
+                            },
+                            content = incoming.content.ifEmpty { existing?.content.orEmpty() }
+                        )
+                        messageRepository.saveMessage(merged)
+                        merged
+                    }
                 }
                 // sName 事后校准：链路自报姓名与已存设备类型/名称不一致时回写 Room（图标自愈）。
                 calibrateDeviceFromSenderName(packet.senderName, packet.senderId)
                 // A4：App 在后台且通知开关开启时发状态栏通知；前台走 Snackbar。点击通知跳转详情。
-                if (!isAppInForeground && settingsRepository.notificationsEnabled.value) {
-                    val senderName = packet.senderName.ifBlank {
-                        bluetoothManager.activeDevice.value?.name ?: "远端设备"
+                // 纯附件的 FILE 信封先到时正文为空，等文件完成再通知，避免「已接收空消息」。
+                val fileOnlyEnvelope = packet.type == MessageProtocol.TYPE_FILE && packet.content.isBlank()
+                if (!fileOnlyEnvelope) {
+                    if (!isAppInForeground && settingsRepository.notificationsEnabled.value) {
+                        val senderName = packet.senderName.ifBlank {
+                            bluetoothManager.activeDevice.value?.name ?: "远端设备"
+                        }
+                        MessageNotifier.notifyMessage(appContext, senderName, packet.content, entity.id)
                     }
-                    MessageNotifier.notifyMessage(appContext, senderName, packet.content, entity.id)
+                    _snackbarEvent.emit(
+                        appContext.getString(R.string.snackbar_received_from, packet.senderName)
+                    )
                 }
-                _snackbarEvent.emit(
-                    appContext.getString(R.string.snackbar_received_from, packet.senderName)
-                )
             }
         }
     }
@@ -253,12 +272,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                         receiverDeviceName = "This Device",
                                         content = "",
                                         createdAt = System.currentTimeMillis(),
+                                        status = "RECEIVING",
                                         messageType = MessageProtocol.TYPE_FILE
                                     )
                                 )
                             }
                             val staging = ReceivedFileManager.stagingFile(appContext, start.id)
                             val existing = messageRepository.getFileById(start.id)
+                            if (existing == null || existing.status == "RECEIVING") {
+                                messageRepository.updateMessageRow(start.msgId, "RECEIVING")
+                            }
                             if (existing == null) {
                                 messageRepository.saveFile(
                                     FileEntity(
@@ -297,7 +320,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 try {
                     withContext(Dispatchers.IO) {
                         receiveDbLock.withLock {
-                            val file = messageRepository.getFileById(result.fileId)
+                            var file = messageRepository.getFileById(result.fileId)
+                            if (file == null) {
+                                // START insert is async; a tiny file's END can arrive first.
+                                kotlinx.coroutines.delay(250)
+                                file = messageRepository.getFileById(result.fileId)
+                            }
                             if (file == null) {
                                 Log.w(TAG, "recv RESULT: file not found, skipping; ${result.fileId}")
                                 return@withLock
@@ -308,6 +336,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             if (!result.success) {
                                 ReceivedFileManager.deleteStaging(appContext, result.fileId)
                             }
+                            refreshParentStatus(file.messageId)
                         }
                     }
                     if (result.success) {
@@ -366,6 +395,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
             }
         }
+    }
+
+    private suspend fun refreshParentStatus(messageId: String) {
+        val files = messageRepository.getFilesForMessageOnce(messageId)
+        if (files.isEmpty()) return
+        val status = when {
+            files.any { it.status == "RECEIVING" } -> "RECEIVING"
+            files.any { it.status == "FAILED" } -> "FAILED"
+            else -> "RECEIVED"
+        }
+        messageRepository.updateMessageRow(messageId, status)
     }
 
     // ---- text input & attachments ----

@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.IO;
 using System.Security.Cryptography;
 using System.Threading.Channels;
@@ -46,6 +47,9 @@ public sealed class TransferService : IDisposable
 
     // Inbound file session (one active at a time)
     private ReceiveSession? _recv;
+
+    /// <summary>Final FILE_ACK (ok=true) waiters keyed by file id. Progress ACKs (ok=false) are ignored.</summary>
+    private readonly ConcurrentDictionary<string, TaskCompletionSource<FileAck>> _finalAcks = new();
 
     /// <summary>Raised with (textMessageId, content) when a TEXT frame arrives.</summary>
     public event Action<string, string>? TextReceived;
@@ -123,6 +127,7 @@ public sealed class TransferService : IDisposable
             try { socket.OutputStream.Dispose(); } catch { }
         }
         ClearReceiveSession();
+        FailPendingAcks("连接已断开");
         if (hadActive && !silent) Post(() => Disconnected?.Invoke());
     }
 
@@ -135,23 +140,41 @@ public sealed class TransferService : IDisposable
 
     // ---------- Send ----------
 
-    public async Task SendTextAsync(string content, string? messageId = null)
+    public async Task SendTextAsync(string content, string? messageId = null, string type = "TEXT")
     {
         var id = messageId ?? Guid.NewGuid().ToString();
+        var packetType = string.IsNullOrWhiteSpace(type) ? "TEXT" : type;
         var buf = FileMetaJson.EncodeText(new Packet(
-            MessageProtocol.ProtocolVersion, "TEXT", id,
-            "blueself-pc", LocalDeviceName(), "remote", "remote", content,
+            MessageProtocol.ProtocolVersion, packetType, id,
+            "blueself-pc", LocalDeviceName(), "remote", "remote", content ?? "",
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
         await WriteFramesAsync(new[] { new Frame(MessageProtocol.TypeTxt, NextSeq(), buf) });
     }
 
-    public async Task SendFileAsync(string path, string fileId, string? msgId = null, CancellationToken ct = default)
+    /// <summary>Opens <paramref name="path"/> and hashes it. Throws if missing or zero-length
+    /// (cloud placeholders that are not hydrated yet). Call this *before* sending the parent TXT
+    /// so a bad attachment cannot leave an empty delivered message on the peer.</summary>
+    public static async Task<(long Size, string Md5)> HashFileAsync(string path, CancellationToken ct = default)
     {
         var file = new FileInfo(path);
-        var size = file.Length;
-        if (size <= 0) return;
+        if (!file.Exists)
+            throw new FileNotFoundException($"附件不存在: {file.Name}", path);
+        if (file.Length <= 0)
+            throw new InvalidOperationException($"附件为空或尚未同步到本地: {file.Name}");
+        var md5 = await ComputeMd5Async(path, ct).ConfigureAwait(false);
+        return (file.Length, md5);
+    }
 
-        var md5 = await ComputeMd5Async(path, ct);
+    public async Task SendFileAsync(string path, string fileId, string? msgId = null, string? md5 = null, CancellationToken ct = default)
+    {
+        var file = new FileInfo(path);
+        if (!file.Exists)
+            throw new FileNotFoundException($"附件不存在: {file.Name}", path);
+        var size = file.Length;
+        if (size <= 0)
+            throw new InvalidOperationException($"附件为空或尚未同步到本地: {file.Name}");
+
+        md5 ??= await ComputeMd5Async(path, ct);
         var chunkSize = MessageProtocol.DefaultChunkSize;
         var totalChunks = (long)Math.Ceiling(size / (double)chunkSize);
         var start = DateTime.UtcNow;
@@ -159,7 +182,7 @@ public sealed class TransferService : IDisposable
         // FILE_START.msgId 必须等于父 TXT 消息的 id,Android 端才会把文件挂到该消息下。
         var parentMsgId = msgId ?? fileId;
         var startFrame = new Frame(MessageProtocol.TypeFileStart, NextSeq(),
-            FileMetaJson.EncodeStart(fileId, parentMsgId, file.Name, "application/octet-stream", size, md5, chunkSize, totalChunks));
+            FileMetaJson.EncodeStart(fileId, parentMsgId, file.Name, MimeFromName(file.Name), size, md5, chunkSize, totalChunks));
         await WriteFramesAsync(new[] { startFrame });
         EmitProgress(TransferDir.SEND, size, 0, start); // 0% 起点
 
@@ -192,6 +215,9 @@ public sealed class TransferService : IDisposable
                 await WriteFramesAsync(window);
                 ConnectionLog.Write("Chunk window", $"{sentBytes}/{size} bytes");
             }
+
+            if (sentBytes != size)
+                throw new IOException($"附件读取不完整: {file.Name} ({sentBytes}/{size} 字节)");
         }
         catch (Exception ex)
         {
@@ -200,12 +226,75 @@ public sealed class TransferService : IDisposable
             throw; // 上抛,让调用方感知失败,避免"看起来发送成功实际没发出去"
         }
 
+        // Register before FILE_END hits the wire so a fast peer ACK cannot be missed.
+        var ackWaiter = RegisterFinalAck(fileId);
         var endFrame = new Frame(MessageProtocol.TypeFileEnd, NextSeq(),
             FileMetaJson.EncodeEnd(fileId, totalChunks, md5));
         await WriteFramesAsync(new[] { endFrame });
         EmitProgress(TransferDir.SEND, size, size, start);
+
+        FileAck ack;
+        try
+        {
+            ack = await ackWaiter.Task.WaitAsync(TimeSpan.FromSeconds(60), ct);
+        }
+        catch (TimeoutException)
+        {
+            _finalAcks.TryRemove(fileId, out _);
+            Post(() => TransferCompleted?.Invoke(TransferDir.SEND));
+            throw new TimeoutException($"等待对端确认超时: {file.Name}");
+        }
+
+        if (!ack.Ok || !ack.Md5Match)
+        {
+            Post(() => TransferCompleted?.Invoke(TransferDir.SEND));
+            throw new IOException($"对端文件校验失败: {file.Name}");
+        }
+
         Post(() => Info?.Invoke($"已发送 {file.Name}"));
         Post(() => TransferCompleted?.Invoke(TransferDir.SEND));
+    }
+
+    /// <summary>Guess a MIME from the extension so Android can pick the right file icon.</summary>
+    internal static string MimeFromName(string name)
+    {
+        var ext = Path.GetExtension(name).ToLowerInvariant();
+        return ext switch
+        {
+            ".pdf" => "application/pdf",
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".gif" => "image/gif",
+            ".webp" => "image/webp",
+            ".mp4" => "video/mp4",
+            ".txt" => "text/plain",
+            ".md" => "text/markdown",
+            _ => "application/octet-stream"
+        };
+    }
+
+    private TaskCompletionSource<FileAck> RegisterFinalAck(string fileId)
+    {
+        var tcs = new TaskCompletionSource<FileAck>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _finalAcks[fileId] = tcs;
+        return tcs;
+    }
+
+    private void CompleteFinalAck(FileAck ack)
+    {
+        // Progress ACKs use ok=false; only the FILE_END ack completes the waiter.
+        if (!ack.Ok) return;
+        if (_finalAcks.TryRemove(ack.Id, out var tcs))
+            tcs.TrySetResult(ack);
+    }
+
+    private void FailPendingAcks(string reason)
+    {
+        foreach (var key in _finalAcks.Keys)
+        {
+            if (_finalAcks.TryRemove(key, out var tcs))
+                tcs.TrySetException(new IOException(reason));
+        }
     }
 
     /// <summary>单次 StoreAsync 的分段大小：RFCOMM 流控下一次性灌入约 1MB（16×64KB 窗口）
@@ -319,7 +408,8 @@ public sealed class TransferService : IDisposable
                 await HandleFileEnd(frame);
                 break;
             case MessageProtocol.TypeFileAck:
-                break; // acks are informational; progress is driven locally
+                CompleteFinalAck(FileMetaJson.DecodeAck(frame.Payload));
+                break;
             case MessageProtocol.TypeErr:
                 FileMetaJson.DecodeError(frame.Payload, out var code, out var msg);
                 Post(() => LogError?.Invoke($"对端错误[{code}]: {msg}"));
