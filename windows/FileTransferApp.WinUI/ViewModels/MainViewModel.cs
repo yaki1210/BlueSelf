@@ -1,7 +1,9 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
+using System.Windows.Data;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Enumeration;
 using Windows.Networking.Sockets;
@@ -164,10 +166,23 @@ public sealed class InboxAttachment : ObservableObject
 /// <summary>An entry in the inbox list.</summary>
 public sealed class InboxEntry : ObservableObject
 {
+    public required string Id { get; init; }
+    /// <summary>Protocol parent message id used to merge inbound text + files into one row.</summary>
+    public string? MessageId { get; init; }
     public DeviceItem? Peer { get; init; }
     public required string Device { get; init; }
-    public required string Time { get; init; }
-    public required string Content { get; set; }
+    public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.Now;
+
+    private string _content = "";
+    public required string Content
+    {
+        get => _content;
+        set
+        {
+            if (Set(ref _content, value))
+                OnPropertyChanged(nameof(Preview));
+        }
+    }
     public bool IsOutgoing { get; init; }
 
     public ObservableCollection<InboxAttachment> Attachments { get; } = new();
@@ -177,6 +192,19 @@ public sealed class InboxEntry : ObservableObject
 
     /// <summary>Peer device icon kind (pc/tablet/phone) for the list avatar.</summary>
     public string DeviceKind => MainViewModel.KindOfName(Device);
+
+    /// <summary>List timestamp: today → HH:mm; this year → MM-dd HH:mm; else full date.</summary>
+    public string Time
+    {
+        get
+        {
+            var t = CreatedAt.ToLocalTime();
+            var now = DateTime.Now;
+            if (t.Date == now.Date) return t.ToString("HH:mm");
+            if (t.Year == now.Year) return t.ToString("MM-dd HH:mm");
+            return t.ToString("yyyy-MM-dd HH:mm");
+        }
+    }
 
     /// <summary>Preview line for the list (content first line or first attachment name).</summary>
     public string Preview
@@ -188,8 +216,13 @@ public sealed class InboxEntry : ObservableObject
         }
     }
     /// <summary>Attachment badge text for the list.</summary>
-    public string FileInfo => Attachments.Count > 0 ? $"{Attachments.Count} 个文件" : "";
+    public string FileInfo => Attachments.Count > 0
+        ? string.Format(MainViewModel.Loc("inFileCount", "{0} 个文件"), Attachments.Count)
+        : "";
     public bool HasAttachments => Attachments.Count > 0;
+
+    /// <summary>True when device name, body, or any attachment name contains <paramref name="query"/>.</summary>
+    public bool Matches(string? query) => InboxStore.Matches(this, query);
 
     /// <summary>Raises notifications so the list text/badge update after attachments change.</summary>
     public void NotifyAttachments()
@@ -239,6 +272,9 @@ public sealed class MainViewModel : ObservableObject
         SaveSettings(); // 先落盘，确保设置即时持久化
         App.ApplyLanguage(_language);
         App.ApplyTheme(_theme);
+        InboxView = CollectionViewSource.GetDefaultView(Inbox);
+        InboxView.Filter = FilterInbox;
+        LoadInbox();
         _ = InitAsync();
     }
 
@@ -1063,7 +1099,7 @@ public sealed class MainViewModel : ObservableObject
             }
             Text = string.Empty;
             // 发件侧始终生成一条记录（文本/附件）
-            AddOutgoing(sentContent);
+            AddOutgoing(sentContent, messageId);
             Attachments.Clear();
             OnPropertyChanged(nameof(PendingSizeText));
             NotifyAttachmentsChanged();
@@ -1081,6 +1117,8 @@ public sealed class MainViewModel : ObservableObject
 
     // ---- Inbox ----
     public ObservableCollection<InboxEntry> Inbox { get; } = new();
+    /// <summary>Filtered view of <see cref="Inbox"/> driven by <see cref="InboxSearchQuery"/>.</summary>
+    public ICollectionView InboxView { get; }
     /// <summary>Tracks inbound entries by parent message id so a message's text and files merge into one row.</summary>
     private readonly Dictionary<string, InboxEntry> _inboundByKey = new();
 
@@ -1092,7 +1130,92 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    private void InboxChanged() => OnPropertyChanged(nameof(UnreadCount));
+    private string _inboxSearchQuery = "";
+    public string InboxSearchQuery
+    {
+        get => _inboxSearchQuery;
+        set
+        {
+            var next = value ?? "";
+            if (Set(ref _inboxSearchQuery, next))
+            {
+                InboxView.Refresh();
+                NotifyInboxUi();
+            }
+        }
+    }
+    public bool HasInboxSearchQuery => !string.IsNullOrWhiteSpace(_inboxSearchQuery);
+    public RelayCommandNoArg ClearInboxSearchCommand => new(() => InboxSearchQuery = "");
+
+    public bool HasInboxItems => Inbox.Count > 0;
+    public bool IsInboxEmpty => Inbox.Count == 0;
+    public bool HasFilteredInboxItems => VisibleInboxCount > 0;
+    public bool IsInboxSearchEmpty => Inbox.Count > 0 && VisibleInboxCount == 0;
+
+    public string InboxCountText
+    {
+        get
+        {
+            if (HasInboxSearchQuery)
+                return string.Format(Loc("inMatchCount", "{0} 条匹配"), VisibleInboxCount);
+            return string.Format(Loc("inRecordCount", "{0} 条记录"), Inbox.Count);
+        }
+    }
+
+    private int VisibleInboxCount
+    {
+        get
+        {
+            if (!HasInboxSearchQuery) return Inbox.Count;
+            return Inbox.Count(e => e.Matches(_inboxSearchQuery));
+        }
+    }
+
+    private bool FilterInbox(object obj) => obj is InboxEntry e && e.Matches(_inboxSearchQuery);
+
+    private void NotifyInboxUi()
+    {
+        OnPropertyChanged(nameof(UnreadCount));
+        OnPropertyChanged(nameof(HasInboxItems));
+        OnPropertyChanged(nameof(IsInboxEmpty));
+        OnPropertyChanged(nameof(HasFilteredInboxItems));
+        OnPropertyChanged(nameof(IsInboxSearchEmpty));
+        OnPropertyChanged(nameof(HasInboxSearchQuery));
+        OnPropertyChanged(nameof(InboxCountText));
+    }
+
+    private void InboxChanged()
+    {
+        NotifyInboxUi();
+        PersistInbox();
+    }
+
+    private void LoadInbox()
+    {
+        try
+        {
+            foreach (var snap in InboxStore.Load())
+            {
+                var entry = InboxStore.FromSnapshot(snap);
+                Inbox.Add(entry);
+                if (!string.IsNullOrWhiteSpace(entry.MessageId) && !entry.IsOutgoing)
+                    _inboundByKey[entry.MessageId] = entry;
+            }
+            NotifyInboxUi();
+            if (Inbox.Count > 0)
+                Log($"已加载 {Inbox.Count} 条收件箱记录");
+        }
+        catch (Exception ex)
+        {
+            Log($"加载收件箱失败: {ex.Message}");
+        }
+    }
+
+    private void PersistInbox()
+    {
+        try { InboxStore.Save(Inbox); }
+        catch { /* best-effort */ }
+    }
 
     private InboxEntry? _selectedInbox;
     public InboxEntry? SelectedInbox
@@ -1132,13 +1255,16 @@ public sealed class MainViewModel : ObservableObject
     public string DetailGlyph => KindOfName(SelectedInbox?.Device ?? "");
 
     /// <summary>Create an outgoing record after a send (always, text and/or files).</summary>
-    private void AddOutgoing(string? sentContent)
+    private void AddOutgoing(string? sentContent, string messageId)
     {
+        var id = string.IsNullOrWhiteSpace(messageId) ? Guid.NewGuid().ToString("N") : messageId;
         var entry = new InboxEntry
         {
+            Id = id,
+            MessageId = id,
             Peer = SelectedDevice,
             Device = _peerName,
-            Time = DateTime.Now.ToString("HH:mm"),
+            CreatedAt = DateTimeOffset.Now,
             Content = sentContent ?? "",
             IsOutgoing = true,
             IsUnread = false
@@ -1168,10 +1294,13 @@ public sealed class MainViewModel : ObservableObject
             entry = existing;
             entry.Content = content;
             entry.NotifyAttachments();
+            if (SelectedInbox == entry) NotifyDetail();
+            if (HasInboxSearchQuery) InboxView.Refresh();
+            InboxChanged();
         }
         else
         {
-            entry = AddInbound(_peerName, content);
+            entry = AddInbound(_peerName, content, msgId);
             if (!string.IsNullOrWhiteSpace(msgId)) _inboundByKey[msgId] = entry;
         }
     }
@@ -1187,7 +1316,7 @@ public sealed class MainViewModel : ObservableObject
         }
         else
         {
-            entry = AddInbound(_peerName, string.Empty);
+            entry = AddInbound(_peerName, string.Empty, key);
             if (!string.IsNullOrWhiteSpace(key)) _inboundByKey[key] = entry;
         }
 
@@ -1200,15 +1329,21 @@ public sealed class MainViewModel : ObservableObject
             IsIncomingSaved = true
         });
         entry.NotifyAttachments();
+        if (SelectedInbox == entry) NotifyDetail();
+        if (HasInboxSearchQuery) InboxView.Refresh();
+        InboxChanged();
     }
 
     /// <summary>Creates an inbound entry (inserted at top of the inbox).</summary>
-    private InboxEntry AddInbound(string device, string content, bool isUnread = true)
+    private InboxEntry AddInbound(string device, string content, string? messageId = null, bool isUnread = true)
     {
+        var id = string.IsNullOrWhiteSpace(messageId) ? Guid.NewGuid().ToString("N") : messageId;
         var entry = new InboxEntry
         {
+            Id = id,
+            MessageId = string.IsNullOrWhiteSpace(messageId) ? null : messageId,
             Device = device,
-            Time = DateTime.Now.ToString("HH:mm"),
+            CreatedAt = DateTimeOffset.Now,
             Content = content,
             IsOutgoing = false,
             IsUnread = isUnread
@@ -1231,6 +1366,7 @@ public sealed class MainViewModel : ObservableObject
         if (MessageBox.Show("确定要清空全部消息记录吗？", "清空收件箱", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
             return;
         Inbox.Clear();
+        _inboundByKey.Clear();
         SelectedInbox = null;
         InboxChanged();
         Log("已清空收件箱");
@@ -1263,6 +1399,8 @@ public sealed class MainViewModel : ObservableObject
                 try { if (File.Exists(att.Path)) File.Delete(att.Path); } catch { }
             }
         }
+        if (!string.IsNullOrWhiteSpace(entry.MessageId))
+            _inboundByKey.Remove(entry.MessageId);
         Inbox.Remove(entry);
         if (SelectedInbox == entry) SelectedInbox = null;
         InboxChanged();
@@ -1295,10 +1433,12 @@ public sealed class MainViewModel : ObservableObject
             {
                 App.ApplyLanguage(value);
                 SaveSettings();
-                // 刷新依赖语言字符串的 UI（设备状态、待发大小、占位引导）。
+                // 刷新依赖语言字符串的 UI（设备状态、待发大小、占位引导、收件箱计数）。
                 foreach (var d in Devices) d.NotifyStatusText();
+                foreach (var e in Inbox) e.NotifyAttachments();
                 OnPropertyChanged(nameof(PendingSizeText));
                 OnPropertyChanged(nameof(PlaceholderText));
+                OnPropertyChanged(nameof(InboxCountText));
             }
         }
     }

@@ -46,6 +46,14 @@
     <s:String x:Key="inClear">Clear</s:String>
     <s:String x:Key="inDelete">Delete message</s:String>
     <s:String x:Key="inNoContent">No text content</s:String>
+    <s:String x:Key="inSearchPlaceholder">Search messages, devices, or files</s:String>
+    <s:String x:Key="inSearchEmpty">No matching messages</s:String>
+    <s:String x:Key="inClearSearch">Clear search</s:String>
+    <s:String x:Key="inListEmpty">No messages yet</s:String>
+    <s:String x:Key="inListEmptySub">Sent and received text and files are saved here and remain after you close the app</s:String>
+    <s:String x:Key="inRecordCount">{0} records</s:String>
+    <s:String x:Key="inMatchCount">{0} matches</s:String>
+    <s:String x:Key="inFileCount">{0} files</s:String>
     <s:String x:Key="outgoing">Sent</s:String>
     <s:String x:Key="incoming">Received</s:String>
     <s:String x:Key="outgoingSent">Sent</s:String>

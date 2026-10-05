@@ -51,6 +51,14 @@
     <s:String x:Key="inClear">清空</s:String>
     <s:String x:Key="inDelete">删除消息</s:String>
     <s:String x:Key="inNoContent">无文本内容</s:String>
+    <s:String x:Key="inSearchPlaceholder">搜索消息、设备或文件名</s:String>
+    <s:String x:Key="inSearchEmpty">没有匹配的消息</s:String>
+    <s:String x:Key="inClearSearch">清除搜索</s:String>
+    <s:String x:Key="inListEmpty">暂无消息记录</s:String>
+    <s:String x:Key="inListEmptySub">发送或接收的文本与文件会保存在这里，关闭应用后仍可查看</s:String>
+    <s:String x:Key="inRecordCount">{0} 条记录</s:String>
+    <s:String x:Key="inMatchCount">{0} 条匹配</s:String>
+    <s:String x:Key="inFileCount">{0} 个文件</s:String>
     <s:String x:Key="outgoing">发出</s:String>
     <s:String x:Key="incoming">收到</s:String>
     <s:String x:Key="outgoingSent">已发送</s:String>

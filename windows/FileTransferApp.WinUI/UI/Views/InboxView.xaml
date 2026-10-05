@@ -10,6 +10,7 @@
         <converters:HasItemsToVisibilityConverter x:Key="HasItemsToVis" />
         <converters:KindToGlyphConverter x:Key="KindToGlyph" />
         <converters:DeviceKindToGlyphConverter x:Key="DeviceGlyph" />
+        <converters:EmptyTextToVisibilityConverter x:Key="EmptyToVis" />
 
         <!-- 顶部小动作按钮 -->
         <Style x:Key="MiniActionButton" TargetType="Button">
@@ -60,16 +61,17 @@
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
                 <!-- 列表顶部标题栏 + 已读/清空动作 -->
-                <Grid Grid.Row="0" Margin="2,0,2,12">
+                <Grid Grid.Row="0" Margin="2,0,2,10">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <TextBlock Text="{DynamicResource inTitle}" FontSize="14" FontWeight="Bold"
                                    Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
                         <Border Background="{DynamicResource BrandLightBrush}" CornerRadius="10" Padding="8,2" Margin="8,0,0,0">
-                            <TextBlock Text="{Binding Inbox.Count, StringFormat='{}{0} 条记录'}" FontSize="11"
+                            <TextBlock Text="{Binding InboxCountText}" FontSize="11"
                                        Foreground="{DynamicResource BrandBrush}" FontWeight="SemiBold" />
                         </Border>
                     </StackPanel>
@@ -85,12 +87,79 @@
                     </StackPanel>
                 </Grid>
 
+                <!-- 搜索框 -->
+                <Border Grid.Row="1" Background="{DynamicResource SidebarBgBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                        CornerRadius="8" Padding="8,0" Margin="0,0,0,10" Height="32">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="&#xE721;" FontFamily="{StaticResource IconFont}" FontSize="12"
+                                   Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <Grid Grid.Column="1">
+                            <TextBox Text="{Binding InboxSearchQuery, UpdateSourceTrigger=PropertyChanged}"
+                                     BorderThickness="0" Background="Transparent" Padding="0"
+                                     FontSize="12" VerticalContentAlignment="Center"
+                                     Foreground="{DynamicResource TextPrimaryBrush}"
+                                     CaretBrush="{DynamicResource BrandBrush}"
+                                     MaxLength="200">
+                                <TextBox.Template>
+                                    <ControlTemplate TargetType="TextBox">
+                                        <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center"
+                                                      Focusable="False" HorizontalScrollBarVisibility="Hidden"
+                                                      VerticalScrollBarVisibility="Disabled" />
+                                    </ControlTemplate>
+                                </TextBox.Template>
+                            </TextBox>
+                            <TextBlock Text="{DynamicResource inSearchPlaceholder}" FontSize="12"
+                                       Foreground="{DynamicResource TextDisabledBrush}"
+                                       VerticalAlignment="Center" IsHitTestVisible="False"
+                                       Visibility="{Binding InboxSearchQuery, Converter={StaticResource EmptyToVis}}" />
+                        </Grid>
+                        <Button Grid.Column="2" Style="{DynamicResource IconButton}" Width="22" Height="22" FontSize="10"
+                                Content="&#xE711;" ToolTip="{DynamicResource inClearSearch}"
+                                Command="{Binding ClearInboxSearchCommand}"
+                                Visibility="{Binding HasInboxSearchQuery, Converter={StaticResource BoolToVis}}" />
+                    </Grid>
+                </Border>
+
+                <!-- 空收件箱 -->
+                <StackPanel Grid.Row="2" VerticalAlignment="Center" HorizontalAlignment="Center"
+                            Visibility="{Binding IsInboxEmpty, Converter={StaticResource BoolToVis}}">
+                    <Border Width="44" Height="44" CornerRadius="22" Background="{DynamicResource SurfaceAltBrush}"
+                            HorizontalAlignment="Center" Margin="0,0,0,10">
+                        <TextBlock Text="&#xE715;" FontFamily="{StaticResource IconFont}" FontSize="18"
+                                   Foreground="{DynamicResource TextMutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <TextBlock Text="{DynamicResource inListEmpty}" FontSize="13" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Center" />
+                    <TextBlock Text="{DynamicResource inListEmptySub}" FontSize="11"
+                               Foreground="{DynamicResource TextMutedBrush}" Margin="8,4,8,0"
+                               TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center" />
+                </StackPanel>
+
+                <!-- 搜索无结果 -->
+                <StackPanel Grid.Row="2" VerticalAlignment="Center" HorizontalAlignment="Center"
+                            Visibility="{Binding IsInboxSearchEmpty, Converter={StaticResource BoolToVis}}">
+                    <Border Width="44" Height="44" CornerRadius="22" Background="{DynamicResource SurfaceAltBrush}"
+                            HorizontalAlignment="Center" Margin="0,0,0,10">
+                        <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFont}" FontSize="18"
+                                   Foreground="{DynamicResource TextMutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <TextBlock Text="{DynamicResource inSearchEmpty}" FontSize="13" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Center" />
+                </StackPanel>
+
                 <!-- 消息列表 -->
-                <ListBox Grid.Row="1" ItemsSource="{Binding Inbox}" SelectedItem="{Binding SelectedInbox}"
+                <ListBox Grid.Row="2" ItemsSource="{Binding InboxView}" SelectedItem="{Binding SelectedInbox}"
                          ItemContainerStyle="{DynamicResource FluentListBoxItem}"
                          Background="Transparent" BorderThickness="0"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                         ScrollViewer.VerticalScrollBarVisibility="Auto">
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                         Visibility="{Binding HasFilteredInboxItems, Converter={StaticResource BoolToVis}}">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <Border Padding="10,8">

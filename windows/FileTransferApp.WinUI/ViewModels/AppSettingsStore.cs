@@ -4,13 +4,12 @@ using System.Text.Json;
 namespace FileTransferApp.WinUI.ViewModels;
 
 /// <summary>
-/// Persists app settings (language / theme / received-files save path) to a JSON file
-/// under %LOCALAPPDATA%\BlueSelf\settings.json so they survive app restarts.
+/// App data directory under %LOCALAPPDATA%\BlueSelf (falls back to Temp when not writable).
+/// Shared by settings and inbox persistence.
 /// </summary>
-internal static class AppSettingsStore
+internal static class BlueSelfPaths
 {
-    /// <summary>Primary settings dir; falls back to Temp when LocalAppData is not writable.</summary>
-    private static string SettingsDir
+    public static string DataDir
     {
         get
         {
@@ -27,6 +26,15 @@ internal static class AppSettingsStore
             }
         }
     }
+}
+
+/// <summary>
+/// Persists app settings (language / theme / received-files save path) to a JSON file
+/// under %LOCALAPPDATA%\BlueSelf\settings.json so they survive app restarts.
+/// </summary>
+internal static class AppSettingsStore
+{
+    private static string SettingsDir => BlueSelfPaths.DataDir;
 
     private static string SettingsFile => Path.Combine(SettingsDir, "settings.json");
 

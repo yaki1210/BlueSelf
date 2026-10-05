@@ -9,6 +9,7 @@ Windows 端是 BlueSelf 桌面端，提供发送文本/文件、添加设备（�
 - 蓝牙：`Windows.Devices.Bluetooth`、`Windows.Networking.Sockets.StreamSocket`/`DataReader`/`DataWriter`
 - 协议：与 Android 相同的 v2 二进制帧（见 [MessageProtocol.cs](FileTransferApp.WinUI/Bluetooth/Core/MessageProtocol.cs)）
 - 设置持久化：`System.Text.Json` 写 `%LOCALAPPDATA%\BlueSelf\settings.json`
+- 收件箱持久化：`inbox.json` 同目录，启动加载、增删改写回；收件箱支持按正文/设备名/附件名搜索
 
 ## 模块结构
 
@@ -23,6 +24,7 @@ FileTransferApp.WinUI/
 ├── ViewModels/
 │   ├── MainViewModel.cs             # 全局状态机（设备/连接/发送/收件箱/设置/添加设备）
 │   ├── AppSettingsStore.cs          # 设置 JSON 持久化（语言/主题/保存目录）
+│   ├── InboxStore.cs                # 收件箱 JSON 持久化（%LOCALAPPDATA%\BlueSelf\inbox.json）
 │   ├── ObservableObject.cs  RelayCommand.cs
 └── Bluetooth/
     ├── TransferService.cs           # StreamSocket 帧读写、收发管线、事件
@@ -55,11 +57,13 @@ FileTransferApp.WinUI/
 - **目标提示**：`IsTargetRowVisible = SelectedDevice != null && !ShowTargetHint`，与"请选择目标"提示互斥，避免重叠。
 - **传输面板**：`TransferDirectionText`（传输中/接收中）随进度方向切换；`FileName` 发送/接收分别设置，`ResetTransferUi` 清残。
 - **设置持久化**：语言/主题/保存目录写入 `settings.json`，启动时加载并应用；语言切换触发支持字符串的 UI 刷新（设备状态、计数、待发大小）。
+- **收件箱持久化**：收发记录写入 `inbox.json`（文本、附件路径、未读、时间），重启后可继续查看；按正文、设备名、附件名即时过滤。
 
 ## 关键文件
 
 - [Bluetooth/TransferService.cs](FileTransferApp.WinUI/Bluetooth/TransferService.cs)：连接与收发核心。（当前主干为 WPF 项目，路径 `FileTransferApp.WinUI/`）
 - [ViewModels/MainViewModel.cs](FileTransferApp.WinUI/ViewModels/MainViewModel.cs)：应用状态机。
+- [ViewModels/InboxStore.cs](FileTransferApp.WinUI/ViewModels/InboxStore.cs)：收件箱 JSON 持久化。
 - [Bluetooth/Core/RfcommHost.cs](FileTransferApp.WinUI/Bluetooth/Core/RfcommHost.cs)：RFCOMM 服务端/客户端。
 - [Bluetooth/Core/MessageProtocol.cs](FileTransferApp.WinUI/Bluetooth/Core/MessageProtocol.cs)：帧编解码。
 
