@@ -44,6 +44,8 @@
     <s:String x:Key="inOpenDir">Open folder</s:String>
     <s:String x:Key="inMarkAllRead">Mark all read</s:String>
     <s:String x:Key="inClear">Clear</s:String>
+    <s:String x:Key="inClearConfirmTitle">Clear inbox</s:String>
+    <s:String x:Key="inClearConfirm">Clear all messages? This cannot be undone.</s:String>
     <s:String x:Key="inDelete">Delete message</s:String>
     <s:String x:Key="inNoContent">No text content</s:String>
     <s:String x:Key="inSearchPlaceholder">Search messages, devices, or files</s:String>

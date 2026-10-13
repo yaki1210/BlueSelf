@@ -24,6 +24,8 @@
     <string name="back">返回</string>
     <string name="mark_all_read">全部标为已读</string>
     <string name="clear_inbox">清空收件箱</string>
+    <string name="clear_inbox_confirm">确定清空全部消息记录吗？此操作无法撤销。</string>
+    <string name="clear_inbox_confirm_action">清空</string>
     <string name="inbox_empty">收件箱空空如也</string>
     <string name="inbox_empty_hint">接收与发送的文本消息将在此处显示</string>
     <string name="my_to_prefix">我 → </string>

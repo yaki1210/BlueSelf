@@ -1363,8 +1363,13 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommandNoArg ClearInboxCommand => new(() =>
     {
         if (Inbox.Count == 0) return;
-        if (MessageBox.Show("确定要清空全部消息记录吗？", "清空收件箱", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
-            return;
+        var title = Loc("inClearConfirmTitle", "清空收件箱");
+        var body = Loc("inClearConfirm", "确定清空全部消息记录吗？此操作无法撤销。");
+        var owner = Application.Current?.MainWindow;
+        var result = owner != null
+            ? MessageBox.Show(owner, body, title, MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No)
+            : MessageBox.Show(body, title, MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+        if (result != MessageBoxResult.Yes) return;
         Inbox.Clear();
         _inboundByKey.Clear();
         SelectedInbox = null;

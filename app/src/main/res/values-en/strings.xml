@@ -24,6 +24,8 @@
     <string name="back">Back</string>
     <string name="mark_all_read">Mark all as read</string>
     <string name="clear_inbox">Clear inbox</string>
+    <string name="clear_inbox_confirm">Clear all messages? This cannot be undone.</string>
+    <string name="clear_inbox_confirm_action">Clear</string>
     <string name="inbox_empty">Inbox is empty</string>
     <string name="inbox_empty_hint">Messages received and sent will appear here</string>
     <string name="my_to_prefix">Me → </string>

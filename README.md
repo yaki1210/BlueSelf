@@ -4,7 +4,7 @@ Android ↔ Windows 蓝牙文件与文本极简传输。Bluetooth Classic / RFCO
 
 [English](#english) · [下载最新版](https://github.com/yaki1210/BlueSelf/releases/latest)
 
-当前版本：**v0.2.1**
+当前版本：**v0.2.2**
 
 ## 功能
 

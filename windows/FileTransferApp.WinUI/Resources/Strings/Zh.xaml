@@ -49,6 +49,8 @@
     <s:String x:Key="inOpenDir">打开保存目录</s:String>
     <s:String x:Key="inMarkAllRead">全部已读</s:String>
     <s:String x:Key="inClear">清空</s:String>
+    <s:String x:Key="inClearConfirmTitle">清空收件箱</s:String>
+    <s:String x:Key="inClearConfirm">确定清空全部消息记录吗？此操作无法撤销。</s:String>
     <s:String x:Key="inDelete">删除消息</s:String>
     <s:String x:Key="inNoContent">无文本内容</s:String>
     <s:String x:Key="inSearchPlaceholder">搜索消息、设备或文件名</s:String>
