@@ -188,6 +188,7 @@
                 </Expander.Header>
                 <Border Background="#18181B" CornerRadius="8" Padding="12,10" Margin="0,8,0,0" MaxHeight="140">
                     <ListBox ItemsSource="{Binding Logs}" Background="Transparent" BorderThickness="0"
+                             VirtualizingPanel.ScrollUnit="Pixel"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                              ScrollViewer.VerticalScrollBarVisibility="Auto">
                         <ListBox.ItemTemplate>

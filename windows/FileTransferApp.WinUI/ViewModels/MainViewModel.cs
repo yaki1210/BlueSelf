@@ -170,7 +170,16 @@ public sealed class InboxEntry : ObservableObject
     /// <summary>Protocol parent message id used to merge inbound text + files into one row.</summary>
     public string? MessageId { get; init; }
     public DeviceItem? Peer { get; init; }
-    public required string Device { get; init; }
+    private string _device = "";
+    public required string Device
+    {
+        get => _device;
+        set
+        {
+            if (Set(ref _device, value))
+                OnPropertyChanged(nameof(DeviceKind));
+        }
+    }
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.Now;
 
     private string _content = "";
@@ -332,7 +341,7 @@ public sealed class MainViewModel : ObservableObject
         catch { }
 
         // 先订阅再监听：避免订阅之前就有设备连入而丢失连接。
-        _host.IncomingConnected += OnIncomingConnected;
+        _host.IncomingConnected += socket => _ = OnIncomingConnectedAsync(socket);
 
         await EnsureListeningAsync();
         await RefreshDevicesAsync();
@@ -385,55 +394,123 @@ public sealed class MainViewModel : ObservableObject
         await RefreshDevicesAsync();
     }
 
-    /// <summary>Handles a phone connecting into this PC, syncing the device column and current target.</summary>
-    private void OnIncomingConnected(StreamSocket socket)
+    /// <summary>Handles a peer connecting into this PC. Resolves the saved Bluetooth name before the read loop starts,
+    /// so inbox rows are not labeled "远端设备".</summary>
+    private async Task OnIncomingConnectedAsync(StreamSocket socket)
     {
-        var addr = TryParseMacToUlong(socket.Information.RemoteHostName?.CanonicalName);
-        _transfer.Attach(socket, addr);
-
-        Post(() =>
-        {
-            _selectedAddress = addr ?? 0;
-            _peerName = "远端设备";
-            DeviceItem? match = null;
-
-            foreach (var d in Devices)
-            {
-                if (addr.HasValue && d.Address == addr.Value)
-                {
-                    d.Status = DeviceStatus.Online;
-                    match = d;
-                }
-                else
-                {
-                    d.Status = DeviceStatus.Offline; // 其余设备全部下线，避免"选择A却发到B"
-                }
-            }
-
-            if (match != null)
-            {
-                _peerName = match.Name;
-                _selectedDevice = match; // 直接赋值字段 + 通知，绕过 setter 避免触发重连
-                OnPropertyChanged(nameof(SelectedDevice));
-                OnPropertyChanged(nameof(HasSelectedDevice));
-                OnPropertyChanged(nameof(IsTargetRowVisible));
-                OnPropertyChanged(nameof(PlaceholderText));
-                Log($"{match.Name} 已接入");
-            }
-            else
-            {
-                IsListening = true;
-                Log(addr.HasValue ? "远端设备已接入" : "有设备接入（未识别地址），连接已建立");
-            }
-        });
+        var (addr, btName) = await ResolveIncomingPeerAsync(socket);
+        Post(() => ApplyIncomingPeer(socket, addr, btName));
     }
 
-    /// <summary>Parses a Bluetooth MAC ("AA:BB:CC:DD:EE:FF") into a ulong address, or null.</summary>
+    private static async Task<(ulong? Address, string? Name)> ResolveIncomingPeerAsync(StreamSocket socket)
+    {
+        var host = socket.Information?.RemoteHostName;
+        var raw = host?.CanonicalName ?? host?.RawName;
+        ConnectionLog.Write("Incoming host", raw ?? "(null)");
+        ulong? addr = TryParseMacToUlong(raw);
+        string? name = null;
+        try
+        {
+            if (host != null)
+            {
+                var device = await BluetoothDevice.FromHostNameAsync(host);
+                if (device != null)
+                {
+                    if (device.BluetoothAddress != 0) addr = device.BluetoothAddress;
+                    if (!string.IsNullOrWhiteSpace(device.Name)) name = device.Name;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ConnectionLog.Write("Peer name resolve failed", ex.Message);
+        }
+        return (addr, name);
+    }
+
+    private void ApplyIncomingPeer(StreamSocket socket, ulong? addr, string? btName)
+    {
+        _selectedAddress = addr ?? 0;
+        var match = FindSavedDevice(addr);
+
+        foreach (var d in Devices)
+            d.Status = match != null && d.Address == match.Address ? DeviceStatus.Online : DeviceStatus.Offline;
+
+        // 优先用设备栏里已保存的蓝牙名；否则用系统配对名。
+        _peerName = match?.Name ?? (string.IsNullOrWhiteSpace(btName) ? "远端设备" : btName);
+
+        // 名字先落定再挂上读循环，避免第一条消息抢在改名之前入库。
+        _transfer.Attach(socket, match?.Address ?? addr);
+
+        if (match != null)
+        {
+            _selectedDevice = match;
+            OnPropertyChanged(nameof(SelectedDevice));
+            OnPropertyChanged(nameof(HasSelectedDevice));
+            OnPropertyChanged(nameof(IsTargetRowVisible));
+            OnPropertyChanged(nameof(PlaceholderText));
+            Log($"{match.Name} 已接入");
+        }
+        else
+        {
+            IsListening = true;
+            Log(_peerName == "远端设备"
+                ? (addr.HasValue ? "远端设备已接入" : "有设备接入（未识别地址），连接已建立")
+                : $"{_peerName} 已接入");
+        }
+    }
+
+    /// <summary>Matches a remote address against the paired-device list, including reversed MAC byte order.</summary>
+    private DeviceItem? FindSavedDevice(ulong? addr)
+    {
+        if (addr is not ulong a || a == 0) return null;
+        var swapped = ReverseMac(a);
+        return Devices.FirstOrDefault(d => d.Address == a || d.Address == swapped);
+    }
+
+    private static ulong ReverseMac(ulong address)
+    {
+        ulong reversed = 0;
+        for (var i = 0; i < 6; i++)
+        {
+            reversed = (reversed << 8) | (address & 0xFF);
+            address >>= 8;
+        }
+        return reversed;
+    }
+
+    private static bool IsGenericPeerName(string? name)
+        => string.IsNullOrWhiteSpace(name)
+           || name is "远端设备" or "remote" or "未知设备" or "This Device";
+
+    /// <summary>Inbox label: saved Bluetooth name, then the name already on the link, then the packet's self-reported name if it matches a saved device.</summary>
+    private string InboxPeerName(string? packetName)
+    {
+        if (!IsGenericPeerName(_peerName)) return _peerName;
+        if (!string.IsNullOrWhiteSpace(packetName))
+        {
+            var saved = Devices.FirstOrDefault(d =>
+                string.Equals(d.Name, packetName, StringComparison.OrdinalIgnoreCase));
+            if (saved != null) return saved.Name;
+        }
+        return string.IsNullOrWhiteSpace(_peerName) ? "远端设备" : _peerName;
+    }
+
+    /// <summary>Parses a Bluetooth MAC ("AA:BB:CC:DD:EE:FF", or embedded in a host string) into a ulong address.</summary>
     private static ulong? TryParseMacToUlong(string? mac)
     {
         if (string.IsNullOrWhiteSpace(mac)) return null;
-        var hex = mac.Replace(":", "").Replace("-", "").Trim();
-        if (hex.Length != 12) return null;
+        var colon = System.Text.RegularExpressions.Regex.Match(
+            mac, @"([0-9A-Fa-f]{2}[:\-]){5}[0-9A-Fa-f]{2}");
+        var hex = colon.Success
+            ? colon.Value.Replace(":", "").Replace("-", "")
+            : null;
+        if (hex == null)
+        {
+            var run = System.Text.RegularExpressions.Regex.Match(mac, @"[0-9A-Fa-f]{12}");
+            if (!run.Success) return null;
+            hex = run.Value;
+        }
         return ulong.TryParse(hex, System.Globalization.NumberStyles.HexNumber, null, out var v) ? v : null;
     }
 
@@ -1245,6 +1322,20 @@ public sealed class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(DetailHasSavedAttachments));
         OnPropertyChanged(nameof(DetailGlyph));
     }
+    public RelayCommandNoArg CopyDetailCommand => new(() =>
+    {
+        if (string.IsNullOrEmpty(DetailContent)) return;
+        try
+        {
+            System.Windows.Clipboard.SetText(DetailContent);
+            Log("已复制消息");
+        }
+        catch (Exception ex)
+        {
+            Log($"复制失败: {ex.Message}");
+        }
+    });
+
     public string DetailDevice => SelectedInbox?.Device ?? "";
     public string DetailTime => SelectedInbox?.Time ?? "";
     public string DetailContent => SelectedInbox?.Content ?? "";
@@ -1285,14 +1376,17 @@ public sealed class MainViewModel : ObservableObject
         InboxChanged();
     }
 
-    private void HandleInboundText(string msgId, string content)
+    private void HandleInboundText(string msgId, string content, string? senderName)
     {
+        var deviceName = InboxPeerName(senderName);
         InboxEntry entry;
         if (!string.IsNullOrWhiteSpace(msgId) && _inboundByKey.TryGetValue(msgId, out var existing))
         {
             // 同一消息的附件已先到，仅补写文本内容。
             entry = existing;
             entry.Content = content;
+            if (IsGenericPeerName(entry.Device) && !IsGenericPeerName(deviceName))
+                entry.Device = deviceName;
             entry.NotifyAttachments();
             if (SelectedInbox == entry) NotifyDetail();
             if (HasInboxSearchQuery) InboxView.Refresh();
@@ -1300,7 +1394,7 @@ public sealed class MainViewModel : ObservableObject
         }
         else
         {
-            entry = AddInbound(_peerName, content, msgId);
+            entry = AddInbound(deviceName, content, msgId);
             if (!string.IsNullOrWhiteSpace(msgId)) _inboundByKey[msgId] = entry;
         }
     }
@@ -1316,7 +1410,7 @@ public sealed class MainViewModel : ObservableObject
         }
         else
         {
-            entry = AddInbound(_peerName, string.Empty, key);
+            entry = AddInbound(InboxPeerName(null), string.Empty, key);
             if (!string.IsNullOrWhiteSpace(key)) _inboundByKey[key] = entry;
         }
 
@@ -1565,8 +1659,8 @@ public sealed class MainViewModel : ObservableObject
     // ---- Transfer event wiring ----
     private void WireTransferEvents()
     {
-        _transfer.TextReceived += (id, content) =>
-            Post(() => HandleInboundText(id, content));
+        _transfer.TextReceived += (id, content, sender) =>
+            Post(() => HandleInboundText(id, content, sender));
 
         _transfer.FileReceived += file =>
             Post(() => HandleInboundFile(file));

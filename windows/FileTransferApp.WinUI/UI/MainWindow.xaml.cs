@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 using FileTransferApp.WinUI.ViewModels;
 
 namespace FileTransferApp.WinUI.UI;
@@ -60,6 +61,7 @@ public partial class MainWindow : Window
     /// <summary>Rounded corners while normal; square while maximized (avoids clipped corners).</summary>
     private void OnStateChangedForCorner(object sender, EventArgs e)
     {
+        SyncMaximizeButton();
         try
         {
             var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
@@ -68,6 +70,14 @@ public partial class MainWindow : Window
             DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, ref pref, sizeof(int));
         }
         catch { }
+    }
+
+    private void SyncMaximizeButton()
+    {
+        if (MaximizeButton == null) return;
+        var maximized = WindowState == WindowState.Maximized;
+        MaximizeButton.Content = maximized ? "\uE923" : "\uE922";
+        MaximizeButton.ToolTip = maximized ? "向下还原" : "最大化";
     }
 
     /// <summary>窗口级拖拽反馈：有文件时显示复制效果（隧道阶段截获，TextBox 抢不走）。</summary>
@@ -116,11 +126,68 @@ public partial class MainWindow : Window
         MainViewModel.Instance.OnWindowActivated();
     }
 
-    // 标题栏拖拽移动窗口
+    // 标题栏拖拽移动窗口。最大化时先还原成普通窗口，光标仍按在标题栏上的同一位置，再跟着拖。
     private void OnHeaderMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.ButtonState == MouseButtonState.Pressed)
-            DragMove();
+        if (e.ChangedButton != MouseButton.Left || e.ButtonState != MouseButtonState.Pressed)
+            return;
+        if (e.OriginalSource is System.Windows.Controls.Button)
+            return;
+
+        if (WindowState != WindowState.Maximized)
+        {
+            TryDragMove();
+            return;
+        }
+
+        if (sender is not IInputElement header) return;
+        var origin = e.GetPosition(header);
+        header.CaptureMouse();
+
+        MouseEventHandler? move = null;
+        MouseButtonEventHandler? up = null;
+        void Detach()
+        {
+            header.MouseMove -= move;
+            header.MouseLeftButtonUp -= up;
+            if (header.IsMouseCaptured) header.ReleaseMouseCapture();
+        }
+
+        move = (_, args) =>
+        {
+            var now = args.GetPosition(header);
+            if (Math.Abs(now.X - origin.X) < 3 && Math.Abs(now.Y - origin.Y) < 3)
+                return;
+            Detach();
+            RestoreAndDragFromMaximized();
+        };
+        up = (_, _) => Detach();
+
+        header.MouseMove += move;
+        header.MouseLeftButtonUp += up;
+    }
+
+    /// <summary>最大化状态下开始拖动：按光标在标题栏上的横向比例还原窗口，再进入系统拖动。</summary>
+    private void RestoreAndDragFromMaximized()
+    {
+        var local = Mouse.GetPosition(this);
+        var screen = PointToScreen(local);
+        var dpi = VisualTreeHelper.GetDpi(this);
+        var ratio = ActualWidth > 1 ? Math.Clamp(local.X / ActualWidth, 0, 1) : 0.5;
+        var width = RestoreBounds.Width > 1 ? RestoreBounds.Width : Width;
+        var height = RestoreBounds.Height > 1 ? RestoreBounds.Height : Height;
+
+        WindowState = WindowState.Normal;
+        Left = screen.X / dpi.DpiScaleX - width * ratio;
+        Top = screen.Y / dpi.DpiScaleY - local.Y;
+        // 等这次鼠标消息结束、捕获释放后再交给系统拖动，否则 DragMove 会立刻返回。
+        Dispatcher.BeginInvoke(TryDragMove);
+    }
+
+    private void TryDragMove()
+    {
+        try { DragMove(); }
+        catch (InvalidOperationException) { }
     }
 
     private void OnMinimizeButtonClick(object sender, RoutedEventArgs e)
@@ -130,18 +197,7 @@ public partial class MainWindow : Window
 
     private void OnMaximizeButtonClick(object sender, RoutedEventArgs e)
     {
-        if (WindowState == WindowState.Maximized)
-        {
-            WindowState = WindowState.Normal;
-            MaximizeButton.Content = "\uE922";
-            MaximizeButton.ToolTip = "最大化";
-        }
-        else
-        {
-            WindowState = WindowState.Maximized;
-            MaximizeButton.Content = "\uE923";
-            MaximizeButton.ToolTip = "向下还原";
-        }
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
     }
 
     private void OnCloseButtonClick(object sender, RoutedEventArgs e)

@@ -155,6 +155,7 @@
 
                 <!-- 消息列表 -->
                 <ListBox Grid.Row="2" ItemsSource="{Binding InboxView}" SelectedItem="{Binding SelectedInbox}"
+                         VirtualizingPanel.ScrollUnit="Pixel"
                          ItemContainerStyle="{DynamicResource FluentListBoxItem}"
                          Background="Transparent" BorderThickness="0"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
@@ -278,14 +279,30 @@
                     <!-- 消息正文 -->
                     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                         <StackPanel>
-                            <TextBlock Text="{DynamicResource inBody}" FontSize="12" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextMutedBrush}" Margin="0,0,0,8" />
+                            <Grid Margin="0,0,0,8">
+                                <TextBlock Text="{DynamicResource inBody}" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
+                                <Button HorizontalAlignment="Right" Style="{StaticResource MiniActionButton}"
+                                        Content="{DynamicResource inCopy}" Command="{Binding CopyDetailCommand}"
+                                        Visibility="{Binding DetailHasContent, Converter={StaticResource BoolToVis}}" />
+                            </Grid>
                             <Border Background="{DynamicResource SidebarBgBrush}"
                                     BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1"
                                     CornerRadius="10" Padding="16"
                                     Visibility="{Binding DetailHasContent, Converter={StaticResource BoolToVis}}">
-                                <TextBlock Text="{Binding DetailContent}" FontSize="14" LineHeight="22"
-                                           Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
+                                <TextBox Text="{Binding DetailContent, Mode=OneWay}" IsReadOnly="True"
+                                         IsReadOnlyCaretVisible="False" BorderThickness="0" Background="Transparent"
+                                         FontSize="14" Foreground="{DynamicResource TextPrimaryBrush}"
+                                         CaretBrush="{DynamicResource BrandBrush}" Padding="0"
+                                         TextWrapping="Wrap" Cursor="IBeam" IsTabStop="True">
+                                    <TextBox.Template>
+                                        <ControlTemplate TargetType="TextBox">
+                                            <ScrollViewer x:Name="PART_ContentHost" Focusable="False"
+                                                          HorizontalScrollBarVisibility="Disabled"
+                                                          VerticalScrollBarVisibility="Disabled" />
+                                        </ControlTemplate>
+                                    </TextBox.Template>
+                                </TextBox>
                             </Border>
                             <TextBlock Text="{DynamicResource inNoContent}" FontSize="13" Foreground="{DynamicResource TextDisabledBrush}"
                                        Margin="2,4,0,0"

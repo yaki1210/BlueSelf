@@ -51,8 +51,8 @@ public sealed class TransferService : IDisposable
     /// <summary>Final FILE_ACK (ok=true) waiters keyed by file id. Progress ACKs (ok=false) are ignored.</summary>
     private readonly ConcurrentDictionary<string, TaskCompletionSource<FileAck>> _finalAcks = new();
 
-    /// <summary>Raised with (textMessageId, content) when a TEXT frame arrives.</summary>
-    public event Action<string, string>? TextReceived;
+    /// <summary>Raised with (textMessageId, content, senderName) when a TEXT frame arrives.</summary>
+    public event Action<string, string, string>? TextReceived;
     public event Action<InboundFile>? FileReceived;
     /// <summary>Raised with the incoming file name when an inbound FILE_START begins (for the status panel).</summary>
     public event Action<string>? ReceiveStarted;
@@ -395,7 +395,7 @@ public sealed class TransferService : IDisposable
         {
             case MessageProtocol.TypeTxt:
                 var pkt = FileMetaJson.DecodeText(frame.Payload, "remote", "远端设备");
-                Post(() => TextReceived?.Invoke(pkt.Id, pkt.Content));
+                Post(() => TextReceived?.Invoke(pkt.Id, pkt.Content, pkt.SenderName));
                 break;
             case MessageProtocol.TypeFileStart:
                 HandleFileStart(frame);

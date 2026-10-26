@@ -39,6 +39,7 @@
     <s:String x:Key="inEmptySub">Received text and files will be shown here</s:String>
     <s:String x:Key="inRecvTime">Time: </s:String>
     <s:String x:Key="inBody">Message</s:String>
+    <s:String x:Key="inCopy">Copy</s:String>
     <s:String x:Key="inFiles">Attachments</s:String>
     <s:String x:Key="inSynced">Saved to local downloads</s:String>
     <s:String x:Key="inOpenDir">Open folder</s:String>

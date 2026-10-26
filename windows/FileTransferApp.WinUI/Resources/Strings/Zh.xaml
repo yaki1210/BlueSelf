@@ -44,6 +44,7 @@
     <s:String x:Key="inEmptySub">接收到的文本消息与文件内容将在此处完整展示</s:String>
     <s:String x:Key="inRecvTime">接收时间：</s:String>
     <s:String x:Key="inBody">消息内容</s:String>
+    <s:String x:Key="inCopy">复制</s:String>
     <s:String x:Key="inFiles">附件</s:String>
     <s:String x:Key="inSynced">已同步至本地下载目录</s:String>
     <s:String x:Key="inOpenDir">打开保存目录</s:String>

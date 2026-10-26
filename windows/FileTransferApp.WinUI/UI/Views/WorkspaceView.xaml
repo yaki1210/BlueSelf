@@ -40,6 +40,7 @@
 
                 <!-- 设备列表：点击整行即（重）连接，状态由圆点颜色表达，无持久选中框 -->
                 <ListBox Grid.Row="1" ItemsSource="{Binding Devices}"
+                         VirtualizingPanel.ScrollUnit="Pixel"
                          ItemContainerStyle="{StaticResource FluentListBoxItem}"
                          Background="Transparent" BorderThickness="0"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
